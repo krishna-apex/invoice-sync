@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="max-w-3xl mx-auto text-center py-12">
+  <h1 class="text-4xl font-bold tracking-tight">Stop copying hours into invoices</h1>
+  <p class="mt-4 text-lg text-slate-600">InvoiceSync pulls time from Toggl / Clockify, builds branded PDFs, and emails clients. 60-90 minutes saved every month.</p>
+  <div class="mt-8 flex justify-center gap-3">
+    <a href="/register" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700">Start free — 5 invoices/mo</a>
+    <a href="/login" class="bg-white border px-6 py-3 rounded-lg font-medium hover:bg-slate-50">Login</a>
+  </div>
+  <div class="mt-12 grid md:grid-cols-3 gap-4 text-left">
+    <div class="bg-white p-4 rounded-lg border"><div class="font-semibold">Import time</div><div class="text-sm text-slate-500 mt-1">Paste Toggl/Clockify token or CSV fallback. No manual spreadsheet.</div></div>
+    <div class="bg-white p-4 rounded-lg border"><div class="font-semibold">Branded PDF</div><div class="text-sm text-slate-500 mt-1">ReportLab on server — clean, printable, no client libs.</div></div>
+    <div class="bg-white p-4 rounded-lg border"><div class="font-semibold">Stripe Pro $12/mo</div><div class="text-sm text-slate-500 mt-1">5 free/mo, unlimited on Pro. Recurring monthly templates.</div></div>
+  </div>
+  <div class="mt-8 text-sm text-slate-500">Stack: FastAPI + SQLite + HTMX + Tailwind CDN + Stripe — runs with <code class="bg-slate-100 px-1 py-0.5 rounded">python app.py</code></div>
+</div>
+{% endblock %}

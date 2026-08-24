@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}InvoiceSync{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen">
+  <header class="border-b bg-white sticky top-0 z-10">
+    <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+      <a href="/" class="font-bold text-lg text-blue-600">InvoiceSync</a>
+      <nav class="text-sm flex items-center gap-3">
+        {% if user %}
+          <span class="text-slate-500 hidden sm:inline">{{ user.email }} <span class="ml-1 px-2 py-0.5 rounded-full text-xs {% if user.plan=='pro' %}bg-blue-100 text-blue-700{% else %}bg-slate-100 text-slate-600{% endif %}">{{ user.plan }}</span></span>
+          <a href="/dashboard" class="text-blue-600 hover:underline">Dashboard</a>
+          <a href="/clients" class="text-slate-600 hover:underline">Clients</a>
+          <a href="/invoices/new" class="text-slate-600 hover:underline">New Invoice</a>
+          <a href="/billing" class="text-slate-600 hover:underline">Billing</a>
+          <a href="/logout" class="text-slate-400 hover:text-slate-600">Logout</a>
+        {% else %}
+          <a href="/login" class="text-blue-600 hover:underline">Login</a>
+          <a href="/register" class="bg-blue-600 text-white px-3 py-1.5 rounded hover:bg-blue-700">Sign up</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+  <main class="max-w-5xl mx-auto px-4 py-8">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="max-w-5xl mx-auto px-4 py-6 text-center text-xs text-slate-400 border-t mt-8">
+    InvoiceSync — lightweight invoicing for freelancers • Single process • SQLite • ReportLab PDFs
+  </footer>
+</body>
+</html>

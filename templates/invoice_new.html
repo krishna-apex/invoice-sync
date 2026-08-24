@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}New Invoice — InvoiceSync{% endblock %}
+{% block content %}
+<h1 class="text-2xl font-bold">Generate invoice</h1>
+<p class="text-sm text-slate-500">Pick client + date range → pulls tracked hours → preview.</p>
+{% if error %}
+<div class="mt-3 p-3 rounded border {% if upgrade %}bg-amber-50 border-amber-200 text-amber-800{% else %}bg-red-50 border-red-200 text-red-700{% endif %} text-sm">
+  {{ error }} {% if upgrade %}<a href="/billing" class="underline font-medium text-blue-600">Upgrade to Pro</a>{% endif %}
+</div>
+{% endif %}
+<div class="mt-4 bg-white border rounded-lg p-4 max-w-2xl">
+  <form method="post" action="/invoices/new" class="space-y-3">
+    <div><label class="text-sm font-medium">Client</label>
+      <select name="client_id" required class="mt-1 w-full border rounded px-3 py-2 text-sm">
+        {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} — {{ c.currency }} {{ "%.2f"|format(c.rate) }}/h</option>{% endfor %}
+      </select>
+    </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div><label class="text-sm font-medium">Period start</label><input name="period_start" type="date" required class="mt-1 w-full border rounded px-3 py-2 text-sm"></div>
+      <div><label class="text-sm font-medium">Period end</label><input name="period_end" type="date" required class="mt-1 w-full border rounded px-3 py-2 text-sm"></div>
+    </div>
+    <label class="flex items-center gap-2 text-sm"><input type="checkbox" name="recurring" class="rounded"> Mark as monthly recurring template (creates a cron-like entry, auto every 30d)</label>
+    <button class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Generate + Download PDF</button>
+  </form>
+  {% if preview %}
+  <div class="mt-6 border-t pt-4">
+    <h3 class="font-semibold">Preview: {{ preview.client.name }} {{ preview.period_start }} → {{ preview.period_end }}</h3>
+    <div class="text-sm text-slate-500">{{ preview.count }} entries • {{ preview.total_hours }}h • {{ preview.client.currency }} {{ "%.2f"|format(preview.amount) }}</div>
+  </div>
+  {% endif %}
+  <div class="mt-4 text-xs text-slate-400">Free: {{ user.plan }} • Limit 5/mo. Blocked at 6th with upgrade prompt. Pro is unlimited.</div>
+</div>
+{% endblock %}
