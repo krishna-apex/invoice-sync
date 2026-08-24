@@ -1,39 +1,119 @@
 {% extends "base.html" %}
 {% block title %}Clients — InvoiceSync{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold">Clients</h1>
-{% if error %}<div class="mt-3 bg-red-50 text-red-700 text-sm p-3 rounded border border-red-200">{{ error }}</div>{% endif %}
-<div class="mt-4 bg-white border rounded-lg p-4">
-  <h2 class="font-semibold">Add client</h2>
-  <form method="post" action="/clients" class="mt-3 grid md:grid-cols-2 gap-3">
-    <input name="name" placeholder="Name * e.g. Acme Corp" required class="border rounded px-3 py-2 text-sm">
-    <input name="email" placeholder="Client email" type="email" class="border rounded px-3 py-2 text-sm">
-    <input name="currency" placeholder="Currency" value="USD" class="border rounded px-3 py-2 text-sm">
-    <input name="rate" placeholder="Hourly rate e.g. 75" type="number" step="0.01" class="border rounded px-3 py-2 text-sm">
-    <input name="custom_fields" placeholder='Custom fields: PO:123, tax ID:456 or {"PO":"123"}' class="md:col-span-2 border rounded px-3 py-2 text-sm">
-    <button class="md:col-span-2 bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Add client</button>
+<div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+  <div>
+    <div class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide uppercase text-slate-500">
+      <span class="w-2 h-2 rounded-full bg-violet-500"></span> Your roster • {{ clients|length }} clients
+    </div>
+    <h1 class="mt-2 text-[30px] font-extrabold tracking-tight leading-none">Clients</h1>
+    <p class="mt-2 text-sm text-slate-600 max-w-xl">Each client has its own currency, rate, and custom fields (PO, tax ID). Those fields flow straight into the PDF.</p>
+  </div>
+  <div class="hidden sm:flex items-center gap-2 text-xs font-medium bg-white border border-slate-200 shadow-soft rounded-full px-3 py-2">
+    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> {{ clients|length }} active • HTMX instant add
+  </div>
+</div>
+
+{% if error %}<div class="mt-6 bg-red-50 border border-red-200 text-red-800 rounded-2xl px-4 py-3 text-sm flex gap-3"><span class="w-7 h-7 rounded-full bg-red-100 border border-red-200 flex items-center justify-center font-bold flex-shrink-0">!</span><div class="font-medium">{{ error }}</div></div>{% endif %}
+
+<!-- Add card -->
+<div class="mt-8 bg-white rounded-[24px] border border-slate-200 shadow-soft p-6 sm:p-7">
+  <div class="flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl bg-slate-900 text-white flex items-center justify-center">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+    </div>
+    <div>
+      <h2 class="font-bold tracking-tight">Add a client</h2>
+      <p class="text-xs text-slate-500">Appears instantly on dashboard. Different fields per client are fine.</p>
+    </div>
+  </div>
+
+  <form method="post" action="/clients" class="mt-6 grid sm:grid-cols-2 gap-4">
+    <div class="sm:col-span-1">
+      <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Client name *</label>
+      <input name="name" placeholder="Acme Corp" required class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+    </div>
+    <div class="sm:col-span-1">
+      <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Billing email</label>
+      <input name="email" placeholder="billing@acme.com" type="email" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+    </div>
+    <div>
+      <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Currency</label>
+      <select name="currency" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+        <option value="USD" selected>USD — US Dollar</option>
+        <option value="EUR">EUR — Euro</option>
+        <option value="GBP">GBP — Pound</option>
+        <option value="INR">INR — Rupee</option>
+        <option value="CAD">CAD</option>
+        <option value="AUD">AUD</option>
+      </select>
+    </div>
+    <div>
+      <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Hourly rate</label>
+      <div class="mt-1.5 relative">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+        <input name="rate" placeholder="95.00" type="number" step="0.01" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+      </div>
+    </div>
+    <div class="sm:col-span-2">
+      <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Custom invoice fields <span class="normal-case font-medium text-slate-500">— PO, tax ID, etc. (shows on PDF)</span></label>
+      <input name="custom_fields" placeholder='PO: 8841, tax ID: 456 — or {"PO":"8841","tax":"456"}' class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-mono focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+    </div>
+    <button class="sm:col-span-2 bg-slate-900 text-white rounded-xl py-3 text-sm font-semibold hover:bg-black hover:-translate-y-px shadow-soft transition flex items-center justify-center gap-2">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+      Add client
+    </button>
   </form>
 </div>
 
-<div class="mt-6 bg-white border rounded-lg p-4">
-  <h2 class="font-semibold">Your clients ({{ clients|length }})</h2>
+<!-- Grid of clients -->
+<div class="mt-8">
+  <div class="flex items-center justify-between">
+    <h2 class="font-bold tracking-tight">Your clients <span class="ml-2 text-xs font-medium bg-white border border-slate-200 px-2.5 py-1 rounded-full">{{ clients|length }}</span></h2>
+    <span class="text-xs text-slate-500 hidden sm:inline">Tip: custom fields render on the PDF header automatically.</span>
+  </div>
+
   {% if clients %}
-  <div class="mt-3 divide-y">
+  <div class="mt-4 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
     {% for c in clients %}
-    <div class="py-3 flex items-center justify-between">
-      <div>
-        <div class="font-medium">{{ c.name }} <span class="text-xs text-slate-500">({{ c.currency }} {{ "%.2f"|format(c.rate) }}/h)</span></div>
-        <div class="text-sm text-slate-500">{{ c.email }} {% if c.custom_fields_json %}<span class="ml-2 font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">{{ c.custom_fields_json }}</span>{% endif %}</div>
+    <div class="group bg-white rounded-[20px] border border-slate-200 p-5 shadow-soft hover:shadow-card hover:-translate-y-0.5 hover:border-slate-300 transition flex flex-col">
+      <div class="flex items-start justify-between gap-3">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-600 to-violet-600 text-white flex items-center justify-center font-extrabold shadow-soft flex-shrink-0">{{ c.name[0]|upper }}</div>
+        <div class="flex items-center gap-1.5">
+          <span class="inline-flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase bg-slate-900 text-white px-2 py-1 rounded-full">{{ c.currency }}</span>
+          <span class="inline-flex text-xs font-semibold bg-slate-50 border border-slate-200 px-2 py-1 rounded-full">{{ "%.0f"|format(c.rate) }}/h</span>
+        </div>
       </div>
-      <div class="flex gap-2">
-        <a href="/clients/{{ c.id }}" class="text-sm text-blue-600 border rounded px-3 py-1 hover:bg-slate-50">Edit</a>
-        <form method="post" action="/clients/{{ c.id }}/delete" onsubmit="return confirm('Delete?')"><button class="text-sm text-red-600 border rounded px-3 py-1 hover:bg-red-50">Delete</button></form>
+      <div class="mt-4">
+        <div class="font-semibold leading-none truncate">{{ c.name }}</div>
+        <div class="text-xs text-slate-500 truncate mt-1">{{ c.email or 'No billing email' }}</div>
       </div>
+      {% if c.custom_fields_json %}
+      <div class="mt-3 flex flex-wrap gap-1.5">
+        {% set raw = c.custom_fields_json %}
+        <span class="inline-flex items-center gap-1 text-[11px] font-mono bg-amber-50 border border-amber-200 text-amber-800 px-2 py-1 rounded-full truncate max-w-full">{{ raw[:64] }}{% if raw|length>64 %}…{% endif %}</span>
+      </div>
+      {% else %}
+      <div class="mt-3 text-xs text-slate-400 italic">No custom fields</div>
+      {% endif %}
+      <div class="mt-4 flex gap-2">
+        <a href="/clients/{{ c.id }}" class="flex-1 inline-flex justify-center items-center gap-1.5 bg-slate-900 text-white rounded-full py-2 text-sm font-semibold hover:bg-black transition">Edit</a>
+        <form method="post" action="/clients/{{ c.id }}/delete" onsubmit="return confirm('Delete {{ c.name }}? This cannot be undone.')" class="flex-1">
+          <button class="w-full inline-flex justify-center items-center gap-1.5 bg-white border border-slate-200 rounded-full py-2 text-sm font-semibold text-red-600 hover:bg-red-50 hover:border-red-200 transition">Delete</button>
+        </form>
+      </div>
+      <div class="mt-3 text-[11px] text-slate-400">Created {{ c.created_at[:10] }} • ID #{{ c.id }}</div>
     </div>
     {% endfor %}
   </div>
   {% else %}
-  <div class="text-sm text-slate-500 mt-3">No clients yet.</div>
+  <div class="mt-4 border-2 border-dashed border-slate-200 rounded-[24px] py-14 px-6 text-center bg-slate-50/50">
+    <div class="w-14 h-14 rounded-2xl bg-white border border-slate-200 shadow-soft mx-auto flex items-center justify-center text-slate-400">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+    </div>
+    <div class="mt-4 font-bold">No clients yet</div>
+    <div class="mt-1 text-sm text-slate-500 max-w-md mx-auto">Add one above. Try Acme Corp — USD 95 — PO 8841. It takes 10 seconds.</div>
+  </div>
   {% endif %}
 </div>
 {% endblock %}

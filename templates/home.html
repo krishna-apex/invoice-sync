@@ -1,17 +1,179 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="max-w-3xl mx-auto text-center py-12">
-  <h1 class="text-4xl font-bold tracking-tight">Stop copying hours into invoices</h1>
-  <p class="mt-4 text-lg text-slate-600">InvoiceSync pulls time from Toggl / Clockify, builds branded PDFs, and emails clients. 60-90 minutes saved every month.</p>
-  <div class="mt-8 flex justify-center gap-3">
-    <a href="/register" class="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700">Start free — 5 invoices/mo</a>
-    <a href="/login" class="bg-white border px-6 py-3 rounded-lg font-medium hover:bg-slate-50">Login</a>
+<div class="relative">
+  <!-- Badge -->
+  <div class="flex justify-center">
+    <div class="inline-flex items-center gap-2 bg-white border border-slate-200 shadow-soft rounded-full px-3 py-1.5 text-xs font-semibold">
+      <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      Loved by freelancers billing $5k–$20k/mo
+      <span class="hidden sm:inline-flex items-center gap-1 text-slate-500 font-medium">• Save 60–90 min every month <span class="ml-1 bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full text-[11px]">No spreadsheets</span></span>
+    </div>
   </div>
-  <div class="mt-12 grid md:grid-cols-3 gap-4 text-left">
-    <div class="bg-white p-4 rounded-lg border"><div class="font-semibold">Import time</div><div class="text-sm text-slate-500 mt-1">Paste Toggl/Clockify token or CSV fallback. No manual spreadsheet.</div></div>
-    <div class="bg-white p-4 rounded-lg border"><div class="font-semibold">Branded PDF</div><div class="text-sm text-slate-500 mt-1">ReportLab on server — clean, printable, no client libs.</div></div>
-    <div class="bg-white p-4 rounded-lg border"><div class="font-semibold">Stripe Pro $12/mo</div><div class="text-sm text-slate-500 mt-1">5 free/mo, unlimited on Pro. Recurring monthly templates.</div></div>
+
+  <!-- Hero -->
+  <div class="mt-8 max-w-4xl mx-auto text-center">
+    <h1 class="text-[38px] sm:text-[54px] font-[800] tracking-tight leading-[0.95]">
+      Stop copying
+      <span class="bg-gradient-to-r from-brand-600 via-violet-600 to-sky-600 bg-clip-text text-transparent">hours</span>
+      into invoices.
+    </h1>
+    <p class="mt-4 text-[16px] sm:text-[18px] leading-relaxed text-slate-600 max-w-2xl mx-auto">
+      InvoiceSync pulls your Toggl / Clockify time for any date range, builds line items per client, and exports a <span class="font-semibold text-slate-900">clean, branded PDF</span> — ready to email. No wrong invoices. No lost trust.
+    </p>
+
+    <div class="mt-8 flex flex-col sm:flex-row justify-center gap-3">
+      <a href="/register" class="inline-flex items-center justify-center gap-2 bg-slate-900 text-white px-7 py-3.5 rounded-full font-semibold shadow-card hover:bg-black hover:-translate-y-0.5 hover:shadow-soft transition">
+        Start free — 5 invoices/mo
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+      </a>
+      <a href="/login" class="inline-flex items-center justify-center gap-2 bg-white border border-slate-200 px-7 py-3.5 rounded-full font-semibold hover:bg-slate-50 hover:border-slate-300 transition">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h10"/><path d="M7 12h10"/></svg>
+        View demo dashboard
+      </a>
+    </div>
+    <div class="mt-3 text-xs text-slate-500">No credit card • PBKDF2 • httpOnly sessions • <span class="font-mono">python app.py</span></div>
   </div>
-  <div class="mt-8 text-sm text-slate-500">Stack: FastAPI + SQLite + HTMX + Tailwind CDN + Stripe — runs with <code class="bg-slate-100 px-1 py-0.5 rounded">python app.py</code></div>
+
+  <!-- Visual mock -->
+  <div class="mt-10 max-w-5xl mx-auto">
+    <div class="relative bg-white rounded-[24px] border border-slate-200 shadow-card overflow-hidden">
+      <div class="h-11 border-b border-slate-100 flex items-center justify-between px-4 sm:px-5 bg-slate-50/70">
+        <div class="flex items-center gap-2">
+          <span class="w-3 h-3 rounded-full bg-red-400"></span><span class="w-3 h-3 rounded-full bg-amber-400"></span><span class="w-3 h-3 rounded-full bg-emerald-400"></span>
+          <span class="ml-3 text-xs font-medium text-slate-500 hidden sm:inline">InvoiceSync — Dashboard • acme@freelance.com • Pro</span>
+        </div>
+        <div class="flex items-center gap-2 text-xs">
+          <span class="hidden sm:inline-flex items-center gap-1.5 bg-white border border-slate-200 px-2.5 py-1 rounded-full font-medium"><span class="w-2 h-2 rounded-full bg-blue-600"></span> Toggl synced 2m ago</span>
+          <span class="bg-slate-900 text-white px-2.5 py-1 rounded-full font-semibold">+ New invoice</span>
+        </div>
+      </div>
+      <div class="p-4 sm:p-6 grid lg:grid-cols-[1.35fr_0.9fr] gap-6 bg-grid">
+        <!-- left fake clients -->
+        <div class="space-y-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-semibold">Clients • 3</div><span class="text-xs bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded-full font-medium">USD • hourly</span>
+          </div>
+          <div class="grid gap-2">
+            <div class="bg-white border border-slate-200 rounded-2xl p-3 flex items-center justify-between shadow-soft">
+              <div class="flex items-center gap-3"><div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white flex items-center justify-center font-bold">A</div><div><div class="text-sm font-semibold">Acme Corp</div><div class="text-xs text-slate-500">billing@acme.com • USD 95/h • PO 8841</div></div></div><span class="text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-full">12.5h → $1,187</span>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-3 flex items-center justify-between">
+              <div class="flex items-center gap-3"><div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-500 to-blue-600 text-white flex items-center justify-center font-bold">N</div><div><div class="text-sm font-semibold">North Studio</div><div class="text-xs text-slate-500">hello@north.studio • EUR 85/h</div></div></div><span class="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-1 rounded-full">3.0h</span>
+            </div>
+            <div class="bg-white border border-slate-200 rounded-2xl p-3 flex items-center justify-between opacity-80">
+              <div class="flex items-center gap-3"><div class="w-9 h-9 rounded-xl bg-slate-200 text-slate-600 flex items-center justify-center font-bold">M</div><div><div class="text-sm font-semibold">Mira & Co</div><div class="text-xs text-slate-500">mira@co.io • USD 110/h • Tax ID</div></div></div><span class="text-xs font-medium bg-slate-100 text-slate-700 px-2 py-1 rounded-full">0h</span>
+            </div>
+          </div>
+          <div class="bg-slate-900 text-white rounded-2xl p-4 flex items-center justify-between">
+            <div class="text-sm font-medium">Import time</div><div class="text-xs bg-white/10 border border-white/10 px-3 py-1 rounded-full">Toggl token • CSV fallback</div>
+          </div>
+        </div>
+        <!-- right fake invoice -->
+        <div class="bg-white border border-slate-200 rounded-2xl shadow-soft overflow-hidden">
+          <div class="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
+            <div class="font-mono text-sm font-bold">INV-0007 <span class="ml-2 text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">DRAFT</span></div><span class="text-xs text-slate-500">Aug 1–15 • 18.4h</span>
+          </div>
+          <div class="p-4">
+            <div class="flex items-center justify-between text-xs text-slate-500"><span>Acme Corp</span><span>USD</span></div>
+            <div class="mt-3 space-y-2 text-sm">
+              <div class="flex justify-between border border-slate-100 rounded-xl px-3 py-2 bg-slate-50"><span>Aug 02 — Brand concepts</span><span class="font-mono font-medium">4.00h • $380</span></div>
+              <div class="flex justify-between border border-slate-100 rounded-xl px-3 py-2"><span>Aug 04 — Landing build</span><span class="font-mono font-medium">6.50h • $617</span></div>
+              <div class="flex justify-between border border-slate-100 rounded-xl px-3 py-2"><span>Aug 09 — Revisions</span><span class="font-mono font-medium">2.00h • $190</span></div>
+              <div class="flex justify-between bg-slate-900 text-white rounded-xl px-3 py-2.5 font-semibold"><span>Total</span><span>18.40h • $1,748.00</span></div>
+            </div>
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <div class="bg-brand-600 text-white rounded-xl py-2 text-sm font-semibold text-center">Download PDF</div><div class="bg-white border border-slate-200 rounded-xl py-2 text-sm font-semibold text-center">Email client</div>
+            </div>
+            <div class="mt-3 text-[11px] text-center text-slate-400">ReportLab on server • No client PDF libs • Print-perfect</div>
+          </div>
+        </div>
+      </div>
+      <div class="px-4 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+        <span class="inline-flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> 5 invoices this month • 2.1h saved vs spreadsheets</span>
+        <span class="font-mono text-[11px] bg-white border border-slate-200 px-2 py-1 rounded-full">stripe webhook → pro unlimited</span>
+      </div>
+    </div>
+    <div class="mt-4 flex justify-center gap-2 text-xs text-slate-500">
+      <span class="inline-flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1 rounded-full">✓ Single process</span>
+      <span class="inline-flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1 rounded-full">✓ SQLite</span>
+      <span class="inline-flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1 rounded-full">✓ HTMX</span>
+      <span class="hidden sm:inline-flex items-center gap-1.5 bg-white border border-slate-200 px-3 py-1 rounded-full">✓ Tailwind CDN</span>
+    </div>
+  </div>
+
+  <!-- Features -->
+  <div class="mt-14 grid md:grid-cols-3 gap-5">
+    <div class="group bg-white rounded-[20px] border border-slate-200 p-6 shadow-soft hover:shadow-card hover:-translate-y-0.5 transition">
+      <div class="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+      </div>
+      <div class="mt-4 font-semibold">Import time without copy-paste</div>
+      <div class="mt-1 text-sm leading-relaxed text-slate-600">Store Toggl/Clockify token securely. Pull any date range via REST. If the API fails, paste CSV — <span class="font-mono text-xs bg-slate-100 px-1.5 py-0.5 rounded">description,seconds,date</span> handled perfectly.</div>
+      <div class="mt-3 text-xs font-medium text-slate-500">Fallback: <span class="font-mono">2.5h, 7200, 01:30:00</span> all parsed.</div>
+    </div>
+    <div class="group bg-white rounded-[20px] border border-slate-200 p-6 shadow-soft hover:shadow-card hover:-translate-y-0.5 transition">
+      <div class="w-10 h-10 rounded-xl bg-violet-50 border border-violet-100 text-violet-600 flex items-center justify-center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </div>
+      <div class="mt-4 font-semibold">Branded PDF you’d actually send</div>
+      <div class="mt-1 text-sm leading-relaxed text-slate-600">ReportLab on the server. Header, client block, PO/tax fields, line items, totals — print-perfect, no client-side libs.</div>
+      <div class="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold text-violet-700 bg-violet-50 border border-violet-200 px-2.5 py-1 rounded-full">PDF email + download</div>
+    </div>
+    <div class="group bg-white rounded-[20px] border border-slate-200 p-6 shadow-soft hover:shadow-card hover:-translate-y-0.5 transition">
+      <div class="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-600 flex items-center justify-center">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/></svg>
+      </div>
+      <div class="mt-4 font-semibold">Recurring without cron</div>
+      <div class="mt-1 text-sm leading-relaxed text-slate-600">Mark any invoice as monthly recurring. Internal <span class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">asyncio</span> loop every 60s clones it automatically. Or <span class="font-mono text-xs bg-slate-100 px-1 py-0.5 rounded">POST /invoices/recurring/run</span> manually.</div>
+      <div class="mt-3 text-xs text-slate-500">No external scheduler.</div>
+    </div>
+  </div>
+
+  <!-- How it works -->
+  <div class="mt-12 bg-white rounded-[24px] border border-slate-200 shadow-card p-6 sm:p-8">
+    <div class="flex items-center justify-between gap-4">
+      <h2 class="text-lg font-bold tracking-tight">How it works</h2>
+      <span class="hidden sm:inline-flex text-xs font-semibold bg-slate-900 text-white px-3 py-1.5 rounded-full">4 steps • 2 minutes</span>
+    </div>
+    <div class="mt-6 grid sm:grid-cols-4 gap-6 text-sm">
+      <div class="relative"><div class="w-8 h-8 rounded-full bg-slate-900 text-white flex items-center justify-center font-bold text-sm">1</div><div class="mt-3 font-semibold">Add clients</div><div class="text-slate-600 leading-relaxed">Name, email, currency, hourly rate, PO/tax fields. One per client, different required fields handled.</div></div>
+      <div class="relative"><div class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center font-bold text-sm">2</div><div class="mt-3 font-semibold">Import hours</div><div class="text-slate-600 leading-relaxed">Token + date range. API success → <span class="font-mono text-xs bg-slate-100 px-1 rounded">api</span> rows. Fail → paste CSV.</div></div>
+      <div class="relative"><div class="w-8 h-8 rounded-full bg-white border border-slate-200 flex items-center justify-center font-bold text-sm">3</div><div class="mt-3 font-semibold">Generate</div><div class="text-slate-600 leading-relaxed">Pick client + range → pull hours → line items → preview → amount.</div></div>
+      <div class="relative"><div class="w-8 h-8 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold text-sm">4</div><div class="mt-3 font-semibold">Send PDF</div><div class="text-slate-600 leading-relaxed">Download or email via SMTP. Marked <span class="font-medium text-emerald-700">sent</span>. Logs with <span class="font-mono text-xs bg-slate-100 px-1 rounded">print()</span>.</div></div>
+    </div>
+  </div>
+
+  <!-- Pricing -->
+  <div class="mt-10 grid md:grid-cols-[1.1fr_0.9fr] gap-6 items-start">
+    <div class="bg-slate-900 text-white rounded-[24px] p-6 sm:p-7 shadow-card relative overflow-hidden">
+      <div class="absolute -top-20 -right-20 w-64 h-64 bg-violet-600 rounded-full blur-[50px] opacity-30"></div>
+      <div class="absolute -bottom-20 -right-10 w-64 h-64 bg-blue-600 rounded-full blur-[50px] opacity-30"></div>
+      <div class="relative">
+        <div class="inline-flex items-center gap-2 bg-white/10 border border-white/10 rounded-full px-3 py-1 text-xs font-semibold"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Most freelancers start free</div>
+        <h3 class="mt-4 text-2xl font-bold tracking-tight">Simple pricing, no surprises.</h3>
+        <p class="mt-2 text-sm text-white/70 leading-relaxed">Free gives you 5 invoices/month — enough to feel the win. Pro removes the limit, unlocks recurring, and keeps you relaxed at month-end.</p>
+        <div class="mt-6 grid grid-cols-2 gap-3">
+          <div class="bg-white text-slate-900 rounded-2xl p-4">
+            <div class="text-xs font-semibold tracking-wide uppercase text-slate-500">Monthly</div><div class="text-2xl font-extrabold mt-1">$12<span class="text-sm font-medium text-slate-500">/mo</span></div><div class="text-xs text-slate-600 mt-1">Unlimited invoices</div><a href="/register" class="mt-3 inline-flex w-full justify-center bg-slate-900 text-white rounded-full py-2 text-sm font-semibold">Start monthly</a>
+          </div>
+          <div class="bg-brand-600 text-white rounded-2xl p-4 border border-white/20 relative">
+            <div class="absolute -top-2 -right-2 bg-amber-400 text-slate-900 text-[11px] font-bold px-2 py-1 rounded-full">Save $45</div>
+            <div class="text-xs font-semibold tracking-wide uppercase text-white/80">Annual</div><div class="text-2xl font-extrabold mt-1">$99<span class="text-sm font-medium text-white/70">/yr</span></div><div class="text-xs text-white/80 mt-1">$8.25/mo billed yearly</div><a href="/register" class="mt-3 inline-flex w-full justify-center bg-white text-slate-900 rounded-full py-2 text-sm font-semibold">Start annual</a>
+          </div>
+        </div>
+        <div class="mt-4 text-xs text-white/60">Stripe Checkout + webhook flips <span class="font-mono bg-white/10 px-1 py-0.5 rounded">free → pro</span>. Test keys work.</div>
+      </div>
+    </div>
+    <div class="bg-white rounded-[24px] border border-slate-200 p-6 shadow-soft">
+      <h4 class="font-semibold">What you save</h4>
+      <div class="mt-4 space-y-3 text-sm">
+        <div class="flex gap-3"><span class="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">✓</span><span><span class="font-semibold">60–90 min/mo</span> not spent in spreadsheets. One click date range.</span></div>
+        <div class="flex gap-3"><span class="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">✓</span><span><span class="font-semibold">Zero copy errors</span> — hours are pulled, not typed. No wrong invoices.</span></div>
+        <div class="flex gap-3"><span class="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">✓</span><span><span class="font-semibold">Client trust intact</span> — PO, tax ID, currency per client, perfectly rendered.</span></div>
+        <div class="flex gap-3"><span class="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center flex-shrink-0">✓</span><span><span class="font-semibold">Runs anywhere</span> — <span class="font-mono bg-slate-100 px-1 py-0.5 rounded text-xs">python app.py</span> on 8000. No Docker.</span></div>
+      </div>
+      <div class="mt-6 flex items-center gap-2 text-xs text-slate-500"><span class="w-2 h-2 rounded-full bg-slate-900"></span> Plain <span class="font-mono">print()</span> debuggable • HTMX • ReportLab</div>
+    </div>
+  </div>
 </div>
 {% endblock %}

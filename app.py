@@ -160,18 +160,55 @@ def dashboard(request: Request):
     invoices = db.list_invoices(u["id"], limit=20)
     # enrich invoices with client name
     enriched = []
+    total_revenue = 0.0
+    month_revenue = 0.0
+    now = datetime.now(timezone.utc)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     for inv in invoices:
         d = dict(inv)
         c = db.get_client(inv["client_id"])
         d["client_name"] = c["name"] if c else f"#{inv['client_id']}"
         d["client_currency"] = c["currency"] if c else "USD"
         enriched.append(d)
+        try:
+            total_revenue += float(inv["amount"] or 0)
+            if inv["created_at"] >= month_start:
+                month_revenue += float(inv["amount"] or 0)
+        except:
+            pass
+    # also include older invoices for total revenue if limit 20 not enough
+    if len(invoices) == 20:
+        try:
+            conn = db.get_conn()
+            row = conn.execute("SELECT COALESCE(SUM(amount),0) s FROM invoices WHERE user_id=?", (u["id"],)).fetchone()
+            total_revenue = float(row["s"] or 0)
+            row2 = conn.execute("SELECT COALESCE(SUM(amount),0) s FROM invoices WHERE user_id=? AND created_at>=?", (u["id"], month_start)).fetchone()
+            month_revenue = float(row2["s"] or 0)
+            conn.close()
+        except:
+            pass
     cnt = db.count_invoices_this_month(u["id"])
     limit = FREE_LIMIT if u["plan"] == "free" else 9999
     remaining = max(0, limit - cnt) if u["plan"] == "free" else "∞"
+    pct = int(min(100, cnt / FREE_LIMIT * 100)) if u["plan"]=="free" else 0
+    # hours tracked
+    try:
+        conn = db.get_conn()
+        row = conn.execute("SELECT COALESCE(SUM(seconds),0) s, COUNT(*) c FROM time_entries WHERE user_id=?", (u["id"],)).fetchone()
+        total_seconds = int(row["s"] or 0)
+        total_hours = round(total_seconds/3600, 1)
+        entries_count = int(row["c"] or 0)
+        conn.close()
+    except:
+        total_hours = 0
+        entries_count = 0
+    # clients count
+    clients_count = len(clients)
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request, "user": u, "clients": clients, "invoices": enriched,
-        "count": cnt, "limit": limit, "remaining": remaining
+        "count": cnt, "limit": limit, "remaining": remaining, "pct": pct,
+        "total_revenue": total_revenue, "month_revenue": month_revenue,
+        "total_hours": total_hours, "entries_count": entries_count, "clients_count": clients_count
     })
 
 # ---------- clients ----------
@@ -485,18 +522,25 @@ def import_time(request: Request,
     else:
         # api failed or no token, use csv
         if not csv_text.strip():
-            # no token and no csv — error
-            # return to dashboard with error? For HTMX, return partial
             msg = "API failed or no token. Please paste CSV as fallback. Example: Design,7200,2026-08-01"
             if request.headers.get("hx-request"):
                 return PlainTextResponse(msg, status_code=400)
-            # redirect with error via query? simpler render dashboard
             clients = db.list_clients(u["id"])
-            invoices = db.list_invoices(u["id"])
+            raw_invoices = db.list_invoices(u["id"])
+            enriched=[]
+            for inv in raw_invoices:
+                d=dict(inv); c=db.get_client(inv["client_id"]); d["client_name"]=c["name"] if c else f"#{inv['client_id']}"; d["client_currency"]=c["currency"] if c else "USD"; enriched.append(d)
+            cnt=db.count_invoices_this_month(u["id"])
+            # minimal stats for error page
+            try:
+                conn=db.get_conn(); row=conn.execute("SELECT COALESCE(SUM(seconds),0) s, COUNT(*) c FROM time_entries WHERE user_id=?", (u["id"],)).fetchone(); total_hours=round(int(row["s"] or 0)/3600,1); entries_count=int(row["c"] or 0); conn.close()
+            except: total_hours=0; entries_count=0
             return templates.TemplateResponse(request, "dashboard.html", {
-                "request": request, "user": u, "clients": clients, "invoices": invoices,
-                "count": db.count_invoices_this_month(u["id"]), "limit": FREE_LIMIT if u["plan"]=="free" else 9999,
-                "remaining": "∞", "error": msg
+                "request": request, "user": u, "clients": clients, "invoices": enriched,
+                "count": cnt, "limit": FREE_LIMIT if u["plan"]=="free" else 9999,
+                "remaining": "∞", "pct": int(min(100,cnt/FREE_LIMIT*100)) if u["plan"]=="free" else 0,
+                "total_revenue": 0, "month_revenue": 0, "total_hours": total_hours, "entries_count": entries_count, "clients_count": len(clients),
+                "error": msg
             })
         entries = parse_csv_text(csv_text)
         source = "manual"
@@ -506,10 +550,21 @@ def import_time(request: Request,
         msg = "No entries found. Check date range or CSV format (description,seconds,date)."
         if request.headers.get("hx-request"):
             return PlainTextResponse(msg, status_code=400)
+        clients = db.list_clients(u["id"])
+        raw_invoices = db.list_invoices(u["id"])
+        enriched=[]
+        for inv in raw_invoices:
+            d=dict(inv); c=db.get_client(inv["client_id"]); d["client_name"]=c["name"] if c else f"#{inv['client_id']}"; d["client_currency"]=c["currency"] if c else "USD"; enriched.append(d)
+        cnt=db.count_invoices_this_month(u["id"])
+        try:
+            conn=db.get_conn(); row=conn.execute("SELECT COALESCE(SUM(seconds),0) s, COUNT(*) c FROM time_entries WHERE user_id=?", (u["id"],)).fetchone(); total_hours=round(int(row["s"] or 0)/3600,1); entries_count=int(row["c"] or 0); conn.close()
+        except: total_hours=0; entries_count=0
         return templates.TemplateResponse(request, "dashboard.html", {
-            "request": request, "user": u, "clients": db.list_clients(u["id"]), "invoices": db.list_invoices(u["id"]),
-            "count": db.count_invoices_this_month(u["id"]), "limit": FREE_LIMIT if u["plan"]=="free" else 9999,
-            "remaining": "∞", "error": msg
+            "request": request, "user": u, "clients": clients, "invoices": enriched,
+            "count": cnt, "limit": FREE_LIMIT if u["plan"]=="free" else 9999,
+            "remaining": "∞", "pct": int(min(100,cnt/FREE_LIMIT*100)) if u["plan"]=="free" else 0,
+            "total_revenue": 0, "month_revenue": 0, "total_hours": total_hours, "entries_count": entries_count, "clients_count": len(clients),
+            "error": msg
         })
 
     stored = 0

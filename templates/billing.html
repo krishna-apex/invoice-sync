@@ -1,34 +1,139 @@
 {% extends "base.html" %}
 {% block title %}Billing — InvoiceSync{% endblock %}
 {% block content %}
-<h1 class="text-2xl font-bold">Billing</h1>
-<div class="mt-4 grid md:grid-cols-2 gap-6">
-  <div class="bg-white border rounded-lg p-4">
-    <div class="text-sm text-slate-500">Current plan</div>
-    <div class="text-xl font-bold mt-1">{{ user.plan }} {% if user.plan=='pro' %}<span class="text-green-600">✓</span>{% endif %}</div>
-    <div class="text-sm mt-1">Usage this month: <b>{{ count }}/{% if user.plan=='free' %}{{ limit }}{% else %}∞{% endif %}</b></div>
-    {% if subscription %}<div class="text-xs text-slate-500 mt-2">Subscription: {{ subscription.plan }} • {{ subscription.status }} • renews {{ subscription.renews_at }}</div>{% endif %}
-    {% if user.stripe_customer_id %}<div class="text-xs text-slate-500">Stripe customer: {{ user.stripe_customer_id }}</div>{% endif %}
-  </div>
-  <div class="bg-white border rounded-lg p-4">
-    <h2 class="font-semibold">Upgrade to Pro</h2>
-    <p class="text-sm text-slate-500 mt-1">Free: 5 invoices/mo. Pro: unlimited, recurring, priority.</p>
-    {% if error %}<div class="mt-2 bg-red-50 border border-red-200 text-red-700 p-2 rounded text-sm">{{ error }}</div>{% endif %}
-    <div class="mt-4 grid grid-cols-2 gap-3">
-      <form method="post" action="/billing/checkout">
-        <input type="hidden" name="plan" value="monthly">
-        <button class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Pro Monthly $12</button>
-      </form>
-      <form method="post" action="/billing/checkout">
-        <input type="hidden" name="plan" value="annual">
-        <button class="w-full bg-slate-900 text-white py-2 rounded hover:bg-slate-800">Pro Annual $99</button>
-      </form>
+<div class="max-w-5xl mx-auto">
+  <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+    <div>
+      <div class="inline-flex items-center gap-2 text-xs font-semibold tracking-wide uppercase text-slate-500"><span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Billing • Stripe Checkout + webhook</div>
+      <h1 class="mt-2 text-[30px] font-extrabold tracking-tight leading-none">Simple, calm pricing</h1>
+      <p class="mt-2 text-sm text-slate-600 max-w-xl">Start free. When 5 invoices isn’t enough, Pro removes the limit. No hidden fees, no per-client charges.</p>
     </div>
-    <div class="mt-3 text-xs text-slate-400">Uses Stripe Checkout + webhook to flip plan. Test keys supported. Without keys, checkout simulates redirect to <code>https://checkout.stripe.com/pay/test</code>.</div>
-    {% if user.plan=='free' and count>=limit %}
-    <div class="mt-3 bg-amber-50 border border-amber-200 text-amber-800 p-2 rounded text-sm">You’ve hit the free limit. Upgrade to create more invoices this month.</div>
-    {% endif %}
+    <div class="hidden sm:flex items-center gap-2 text-xs font-medium bg-white border border-slate-200 shadow-soft rounded-full px-3 py-2">
+      <span class="w-2 h-2 rounded-full {% if user.plan=='pro' %}bg-emerald-500{% else %}bg-amber-500{% endif %}"></span>
+      Current: <span class="font-bold">{{ user.plan|upper }}</span> • {{ count }}/{% if user.plan=='free' %}{{ limit }}{% else %}∞{% endif %}
+    </div>
+  </div>
+
+  <!-- Status card -->
+  <div class="mt-8 grid lg:grid-cols-[0.9fr_1.1fr] gap-6">
+    <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-6">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl {% if user.plan=='pro' %}bg-emerald-50 border border-emerald-200 text-emerald-700{% else %}bg-slate-900 text-white{% endif %} flex items-center justify-center font-extrabold">
+          {% if user.plan=='pro' %}✓{% else %}{{ user.email[0]|upper }}{% endif %}
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-bold leading-none truncate">{{ user.email }}</div>
+          <div class="text-xs text-slate-500">Plan <span class="font-bold {% if user.plan=='pro' %}text-emerald-700{% else %}text-slate-700{% endif %}">{{ user.plan }}</span> {% if user.plan=='pro' %}• ✨ unlimited{% endif %}</div>
+        </div>
+        <span class="hidden sm:inline-flex text-xs font-bold tracking-wide uppercase px-3 py-1.5 rounded-full border {% if user.plan=='pro' %}bg-emerald-50 border-emerald-200 text-emerald-700{% else %}bg-amber-50 border-amber-200 text-amber-800{% endif %}">{{ user.plan }}</span>
+      </div>
+
+      <div class="mt-6 space-y-3 text-sm">
+        <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+          <span class="text-slate-600">Invoices this month</span><span class="font-mono font-bold">{{ count }}/{% if user.plan=='free' %}{{ limit }}{% else %}∞{% endif %}</span>
+        </div>
+        {% if user.plan=='free' %}
+        <div class="h-2 bg-slate-100 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-brand-600 to-violet-600 rounded-full" style="width: {{ (count/limit*100) if limit else 0 }}%"></div></div>
+        {% else %}
+        <div class="h-2 bg-emerald-100 rounded-full overflow-hidden"><div class="h-full w-full bg-emerald-500"></div></div>
+        {% endif %}
+        {% if subscription %}
+        <div class="bg-slate-900 text-white rounded-2xl p-3 text-xs">
+          <div class="font-semibold">Subscription</div>
+          <div class="text-white/70 mt-1 font-mono">{{ subscription.plan }} • {{ subscription.status }} • renews {{ subscription.renews_at[:10] if subscription.renews_at else '—' }}</div>
+        </div>
+        {% endif %}
+        {% if user.stripe_customer_id %}<div class="text-xs font-mono bg-slate-100 border border-slate-200 rounded-xl px-3 py-2">Stripe: {{ user.stripe_customer_id }}</div>{% endif %}
+        {% if user.plan=='free' and count>=limit %}
+        <div class="bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl px-4 py-3 text-sm">
+          <div class="font-bold">You’ve hit the free limit</div>
+          <div class="text-amber-800/80 leading-relaxed">Upgrade to Pro to create unlimited invoices. Your existing invoices and clients stay exactly where they are.</div>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="mt-6 flex items-center gap-2 text-xs text-slate-500">
+        <span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span> Webhook: <span class="font-mono bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">POST /stripe/webhook</span> flips free → pro
+      </div>
+    </div>
+
+    <!-- Pricing -->
+    <div class="space-y-4">
+      <div class="grid sm:grid-cols-2 gap-4">
+        <!-- Free -->
+        <div class="bg-white rounded-[24px] border border-slate-200 p-6 flex flex-col">
+          <div class="text-xs font-bold tracking-wide uppercase text-slate-500">Free</div>
+          <div class="mt-2 flex items-baseline gap-1"><span class="text-3xl font-extrabold tracking-tight">$0</span><span class="text-sm text-slate-500">/mo</span></div>
+          <div class="text-xs text-slate-500">For trying it out</div>
+          <ul class="mt-5 space-y-2.5 text-sm flex-1">
+            <li class="flex gap-2"><span class="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center text-xs flex-shrink-0">✓</span> 5 invoices / month</li>
+            <li class="flex gap-2"><span class="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center text-xs flex-shrink-0">✓</span> Toggl/Clockify + CSV</li>
+            <li class="flex gap-2"><span class="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 flex items-center justify-center text-xs flex-shrink-0">✓</span> Branded PDFs</li>
+            <li class="flex gap-2 opacity-60"><span class="w-5 h-5 rounded-full bg-slate-100 border border-slate-200 text-slate-500 flex items-center justify-center text-xs flex-shrink-0">–</span> Recurring limited</li>
+          </ul>
+          <div class="mt-6 text-xs font-semibold text-slate-500 bg-slate-50 border border-slate-200 rounded-full px-3 py-2 text-center">You’re on Free</div>
+        </div>
+
+        <!-- Pro monthly -->
+        <div class="bg-slate-900 text-white rounded-[24px] p-6 flex flex-col shadow-card relative overflow-hidden border border-slate-800">
+          <div class="absolute -top-16 -right-16 w-40 h-40 bg-violet-600 rounded-full blur-2xl opacity-20"></div>
+          <div class="absolute -bottom-16 -right-6 w-40 h-40 bg-blue-600 rounded-full blur-2xl opacity-20"></div>
+          <div class="relative">
+            <div class="inline-flex items-center gap-1.5 bg-white text-slate-900 rounded-full px-2.5 py-1 text-xs font-bold"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Most popular</div>
+            <div class="mt-3 text-xs font-bold tracking-wide uppercase text-white/60">Pro Monthly</div>
+            <div class="flex items-baseline gap-1"><span class="text-3xl font-extrabold tracking-tight">$12</span><span class="text-sm text-white/60">/mo</span></div>
+            <div class="text-xs text-white/60">Unlimited, cancel anytime</div>
+          </div>
+          <ul class="mt-5 space-y-2.5 text-sm flex-1 relative">
+            <li class="flex gap-2"><span class="w-5 h-5 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-xs flex-shrink-0">✓</span> Unlimited invoices</li>
+            <li class="flex gap-2"><span class="w-5 h-5 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-xs flex-shrink-0">✓</span> Recurring monthly</li>
+            <li class="flex gap-2"><span class="w-5 h-5 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-xs flex-shrink-0">✓</span> Priority email</li>
+            <li class="flex gap-2"><span class="w-5 h-5 rounded-full bg-white/15 border border-white/20 flex items-center justify-center text-xs flex-shrink-0">✓</span> Stripe portal</li>
+          </ul>
+          {% if error %}<div class="mt-4 bg-red-500/20 border border-red-400/30 text-white rounded-xl px-3 py-2 text-xs">{{ error }}</div>{% endif %}
+          <form method="post" action="/billing/checkout" class="mt-6 relative">
+            <input type="hidden" name="plan" value="monthly">
+            <button class="w-full bg-white text-slate-900 rounded-full py-3 text-sm font-bold hover:bg-slate-100 transition flex items-center justify-center gap-2">Upgrade — $12/mo <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+          </form>
+          <div class="mt-3 text-xs text-center text-white/60">Stripe Checkout • test keys work</div>
+        </div>
+      </div>
+
+      <!-- Annual -->
+      <div class="bg-white rounded-[24px] border-2 border-brand-200 p-6 shadow-soft relative">
+        <div class="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-brand-600 to-violet-600 text-white text-xs font-bold tracking-wide uppercase px-4 py-1 rounded-full shadow-soft">Best value — save $45</div>
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <div class="text-xs font-bold tracking-wide uppercase text-slate-500">Pro Annual</div>
+            <div class="flex items-baseline gap-2"><span class="text-3xl font-extrabold tracking-tight">$99</span><span class="text-sm text-slate-500">/yr</span><span class="text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-full">$8.25/mo</span></div>
+            <div class="text-xs text-slate-500">Billed yearly • 2 months free</div>
+          </div>
+          <div class="hidden sm:flex items-center gap-2 text-xs">
+            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Unlimited everything
+          </div>
+        </div>
+        <form method="post" action="/billing/checkout" class="mt-5">
+          <input type="hidden" name="plan" value="annual">
+          <button class="w-full bg-brand-600 text-white rounded-full py-3 text-sm font-bold hover:bg-brand-700 hover:-translate-y-px shadow-soft transition flex items-center justify-center gap-2">Upgrade — $99/yr <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></button>
+        </form>
+        <div class="mt-3 text-xs text-center text-slate-500">Same Pro features • yearly invoice • Stripe webhook flips plan instantly.</div>
+      </div>
+
+      <div class="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-xs leading-relaxed text-amber-800 flex gap-3">
+        <span class="w-7 h-7 rounded-full bg-amber-100 border border-amber-200 flex items-center justify-center flex-shrink-0">💡</span>
+        <div><span class="font-bold">Without keys?</span> Checkout simulates redirect to <span class="font-mono bg-white border border-amber-200 px-1.5 py-0.5 rounded">https://checkout.stripe.com/pay/test</span>. Webhook still works via JSON POST.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- FAQ -->
+  <div class="mt-10 bg-white rounded-[24px] border border-slate-200 shadow-soft p-6 sm:p-7">
+    <h3 class="font-bold tracking-tight">Questions, answered calmly</h3>
+    <div class="mt-5 grid sm:grid-cols-3 gap-6 text-sm">
+      <div><div class="font-semibold">Can I stay on Free?</div><div class="mt-1 text-slate-600 leading-relaxed">Absolutely. 5 invoices/month is enough for many solo freelancers. Upgrade only when you need more or want recurring.</div></div>
+      <div><div class="font-semibold">What does Pro unlock?</div><div class="mt-1 text-slate-600 leading-relaxed">Unlimited invoices, monthly recurring templates, and that relaxed feeling on the 30th. No other limits.</div></div>
+      <div><div class="font-semibold">Stripe webhook?</div><div class="mt-1 text-slate-600 leading-relaxed">Configure <span class="font-mono bg-slate-100 border border-slate-200 px-1 py-0.5 rounded text-xs">STRIPE_WEBHOOK_SECRET</span> for signature verification. Without it, we still flip <span class="font-mono bg-slate-100 px-1 rounded text-xs">free → pro</span> for local dev.</div></div>
+    </div>
   </div>
 </div>
-<div class="mt-6 text-xs text-slate-500">Webhook: POST /stripe/webhook flips free→pro on checkout.session.completed. Configure STRIPE_WEBHOOK_SECRET for signature verification.</div>
 {% endblock %}
