@@ -60,5 +60,15 @@ curl -X POST http://localhost:8000/stripe/webhook -H 'Content-Type: application/
 ## Free tier enforcement
 `free` → 5 invoices/month; 6th returns `200` with clear upgrade message on `GET/POST /invoices/new`. `pro` unlimited.
 
+## Overdue chase (Telegram-first reminders)
+Sending an invoice stamps `due_date` = sent + `CHASE_NET_DAYS` (default 14). The 60s loop auto-nudges at **1/7/14/30 days overdue** via Telegram (`TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID`); without keys it logs. Marking **paid stops all reminders**; per-invoice pause supported.
+```
+POST /invoices/{id}/paid          # paid → reminders stop
+POST /invoices/{id}/chase-pause   # toggle pause
+GET  /api/chase-due               # preview due nudges
+GET  /api/chase-due?send=1        # cron entrypoint: send now
+```
+Dashboard shows an overdue panel; invoice page has a chase card.
+
 ## Project status
 Tests: register 303, add client, CSV import, invoice amount, PDF, Stripe redirect, limit block, recurring, email.

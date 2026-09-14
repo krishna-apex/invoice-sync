@@ -49,6 +49,23 @@
 </div>
 {% endif %}
 
+{% if overdue %}
+<div class="mt-6 bg-red-50 border border-red-200 rounded-[20px] p-5">
+  <div class="text-sm font-bold text-red-800">⚠ {{ overdue|length }} overdue — chase needed (nudges auto-send at 1/7/14/30d)</div>
+  <div class="mt-3 space-y-2">
+    {% for o in overdue %}
+    <div class="flex items-center justify-between gap-3 bg-white border border-red-100 rounded-xl px-4 py-2.5 text-sm">
+      <div class="min-w-0"><span class="font-mono font-bold">{{ o.number }}</span> • {{ o.client_name }} • {{ o.client_currency }} {{ "%.2f"|format(o.amount) }} • <span class="font-semibold text-red-700">{{ o.days_overdue }}d overdue</span></div>
+      <div class="flex gap-1.5 flex-shrink-0">
+        <a href="/invoices/{{ o.id }}" class="text-xs font-semibold bg-white border border-slate-200 px-3 py-1.5 rounded-full hover:bg-slate-900 hover:text-white transition">View</a>
+        <button hx-post="/invoices/{{ o.id }}/paid" hx-swap="none" class="text-xs font-semibold bg-emerald-600 text-white px-3 py-1.5 rounded-full hover:bg-emerald-700 transition">Paid</button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
 <!-- KPI cards -->
 <div class="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
   <div class="bg-white rounded-[20px] border border-slate-200 p-5 shadow-soft hover:shadow-card transition">

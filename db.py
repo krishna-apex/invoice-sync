@@ -85,6 +85,14 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_time_entries_user_date ON time_entries(user_id, date);
         CREATE INDEX IF NOT EXISTS idx_invoices_user_created ON invoices(user_id, created_at);
         CREATE INDEX IF NOT EXISTS idx_clients_user ON clients(user_id);
+        CREATE TABLE IF NOT EXISTS reminders (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            invoice_id INTEGER NOT NULL,
+            day INTEGER NOT NULL,
+            sent_at TEXT NOT NULL,
+            UNIQUE(invoice_id, day)
+        );
     """)
     conn.commit()
     conn.close()
@@ -97,6 +105,15 @@ def init_db():
         try:
             conn = get_conn()
             conn.execute("ALTER TABLE users ADD COLUMN api_token TEXT")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+    # migrate: chase columns on invoices (due_date, paid, chase_paused)
+    for _col in ("due_date TEXT", "paid INTEGER DEFAULT 0", "chase_paused INTEGER DEFAULT 0"):
+        try:
+            conn = get_conn()
+            conn.execute(f"ALTER TABLE invoices ADD COLUMN {_col}")
             conn.commit()
             conn.close()
         except Exception:
@@ -389,4 +406,63 @@ def update_recurring_next_run(rid, next_run_iso):
     conn = get_conn()
     conn.execute("UPDATE recurring_templates SET last_run=?, next_run=? WHERE id=?", (datetime.now(timezone.utc).isoformat(), next_run_iso, rid))
     conn.commit()
+    conn.close()
+
+# ---------- chase (overdue reminders) ----------
+def set_invoice_due(iid, due_iso):
+    conn = get_conn()
+    conn.execute("UPDATE invoices SET due_date=? WHERE id=?", (due_iso, iid))
+    conn.commit()
+    conn.close()
+
+def mark_invoice_paid(iid, user_id=None):
+    conn = get_conn()
+    if user_id:
+        conn.execute("UPDATE invoices SET paid=1, status='paid' WHERE id=? AND user_id=?", (iid, user_id))
+    else:
+        conn.execute("UPDATE invoices SET paid=1, status='paid' WHERE id=?", (iid,))
+    conn.commit()
+    conn.close()
+
+def toggle_chase_pause(iid, user_id=None):
+    conn = get_conn()
+    q = "UPDATE invoices SET chase_paused=1-COALESCE(chase_paused,0) WHERE id=?"
+    params = [iid]
+    if user_id:
+        q += " AND user_id=?"
+        params.append(user_id)
+    conn.execute(q, params)
+    conn.commit()
+    conn.close()
+
+def get_overdue(user_id=None):
+    conn = get_conn()
+    q = ("SELECT i.*, c.name client_name, c.currency client_currency, c.email client_email "
+         "FROM invoices i LEFT JOIN clients c ON c.id=i.client_id "
+         "WHERE i.status='sent' AND COALESCE(i.paid,0)=0 AND COALESCE(i.chase_paused,0)=0 "
+         "AND i.due_date IS NOT NULL")
+    params = []
+    if user_id:
+        q += " AND i.user_id=?"
+        params.append(user_id)
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return rows
+
+def reminder_done(invoice_id, day):
+    conn = get_conn()
+    row = conn.execute("SELECT 1 FROM reminders WHERE invoice_id=? AND day=?", (invoice_id, day)).fetchone()
+    conn.close()
+    return bool(row)
+
+def log_reminder(user_id, invoice_id, day):
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT INTO reminders(user_id,invoice_id,day,sent_at) VALUES(?,?,?,?)",
+            (user_id, invoice_id, day, datetime.now(timezone.utc).isoformat()),
+        )
+        conn.commit()
+    except Exception:
+        pass
     conn.close()

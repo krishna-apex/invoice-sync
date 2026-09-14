@@ -34,6 +34,58 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 COOKIE = "invoice_sync"
 FREE_LIMIT = 5
 
+# ---------- overdue chase (Telegram-first reminders) ----------
+CHASE_CADENCE = (1, 7, 14, 30)  # days overdue on which to nudge
+CHASE_DEFAULT_NET_DAYS = 14     # due date = sent date + NET (override via CHASE_NET_DAYS)
+
+def notify_telegram(text: str) -> str:
+    """Send via Telegram bot if configured, else log. Returns mode string."""
+    tok = os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat = os.environ.get("TELEGRAM_CHAT_ID")
+    if not tok or not chat:
+        print(f"[CHASE-TELEGRAM-SKIP] {text}")
+        return "logged"
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{tok}/sendMessage",
+            json={"chat_id": chat, "text": text},
+            timeout=15,
+        )
+        print(f"[CHASE-TELEGRAM] status={r.status_code} {text[:80]}")
+        return "sent" if r.status_code == 200 else f"error:{r.status_code}"
+    except Exception as e:
+        print("[CHASE-TELEGRAM-ERR]", e)
+        return f"error:{e}"
+
+def chase_check(send: bool):
+    """Scan overdue invoices at cadence points. Returns [{invoice, invoice_id, day, mode}]."""
+    from datetime import date as _date
+    today = _date.today()
+    results = []
+    for inv in db.get_overdue():
+        due = (inv["due_date"] or "")[:10]
+        if not due:
+            continue
+        try:
+            days = (today - _date.fromisoformat(due)).days
+        except Exception:
+            continue
+        if days not in CHASE_CADENCE:
+            continue
+        if db.reminder_done(inv["id"], days):
+            continue
+        text = (
+            f"Invoice {inv['number']} — {inv['client_name'] or 'client'} owes "
+            f"{inv['client_currency'] or ''} {float(inv['amount'] or 0):.2f}, "
+            f"{days}d overdue. Send the day-{days} nudge."
+        )
+        mode = "preview"
+        if send:
+            mode = notify_telegram(text)
+            db.log_reminder(inv["user_id"], inv["id"], days)
+        results.append({"invoice": inv["number"], "invoice_id": inv["id"], "day": days, "mode": mode})
+    return results
+
 # ---------- auth helpers ----------
 def current_user(request: Request):
     token = request.cookies.get(COOKIE)
@@ -94,6 +146,13 @@ async def recurring_loop():
                     print("[RECURRING-ERR-TMPL]", tmpl["id"], e)
             if due:
                 print(f"[RECURRING] processed {len(due)} templates")
+            # overdue chase: Telegram nudges at 1/7/14/30-day cadence (logged when unconfigured)
+            try:
+                chased = chase_check(send=True)
+                if chased:
+                    print(f"[CHASE] notified {len(chased)} overdue invoices")
+            except Exception as e:
+                print("[CHASE-ERR]", e)
         except Exception as e:
             print("[RECURRING-ERR]", e)
         await asyncio.sleep(60)
@@ -204,11 +263,31 @@ def dashboard(request: Request):
         entries_count = 0
     # clients count
     clients_count = len(clients)
+    # overdue chase panel
+    from datetime import date as _date
+    overdue = []
+    try:
+        for o in db.get_overdue(u["id"]):
+            due = (o["due_date"] or "")[:10]
+            if not due:
+                continue
+            try:
+                days = (_date.today() - _date.fromisoformat(due)).days
+            except Exception:
+                continue
+            if days > 0:
+                d = dict(o)
+                d["days_overdue"] = days
+                overdue.append(d)
+    except Exception as e:
+        print("[CHASE-DASH-ERR]", e)
+    overdue.sort(key=lambda d: d["days_overdue"], reverse=True)
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request, "user": u, "clients": clients, "invoices": enriched,
         "count": cnt, "limit": limit, "remaining": remaining, "pct": pct,
         "total_revenue": total_revenue, "month_revenue": month_revenue,
-        "total_hours": total_hours, "entries_count": entries_count, "clients_count": clients_count
+        "total_hours": total_hours, "entries_count": entries_count, "clients_count": clients_count,
+        "overdue": overdue
     })
 
 # ---------- clients ----------
@@ -695,7 +774,15 @@ def invoice_detail(request: Request, iid: int):
     if not client:
         client = {"name": f"Client #{inv['client_id']}", "email": "", "currency": "USD", "rate": 0, "custom_fields_json": ""}
     entries = db.list_time_entries(u["id"], client_id=inv["client_id"], start=inv["period_start"], end=inv["period_end"])
-    return templates.TemplateResponse(request, "invoice_detail.html", {"request": request, "user": u, "invoice": inv, "client": client, "entries": entries})
+    days_overdue = None
+    try:
+        due = (inv["due_date"] or "")[:10] if "due_date" in inv.keys() else ""
+        if inv["status"] == "sent" and not (inv["paid"] if "paid" in inv.keys() else 0) and due:
+            from datetime import date as _date
+            days_overdue = (_date.today() - _date.fromisoformat(due)).days
+    except Exception:
+        pass
+    return templates.TemplateResponse(request, "invoice_detail.html", {"request": request, "user": u, "invoice": inv, "client": client, "entries": entries, "days_overdue": days_overdue, "cadence": CHASE_CADENCE})
 
 @app.get("/invoices/{iid}/pdf")
 def invoice_pdf(request: Request, iid: int):
@@ -745,6 +832,12 @@ def invoice_send(request: Request, iid: int):
         print(f"[EMAIL-SKIP] no SMTP config, would send {inv['number']} to {client['email']} amount {inv['amount']}")
         print(f"[EMAIL-BODY] {subject}\n{body}")
         db.set_invoice_status(iid, "sent")
+        try:
+            if not (inv["due_date"] if "due_date" in inv.keys() else None):
+                net = int(os.environ.get("CHASE_NET_DAYS", str(CHASE_DEFAULT_NET_DAYS)))
+                db.set_invoice_due(iid, (datetime.now(timezone.utc).date() + timedelta(days=net)).isoformat())
+        except Exception as e:
+            print("[CHASE-DUE-ERR]", e)
         if request.headers.get("hx-request"):
             return PlainTextResponse(f"Invoice {inv['number']} marked as sent (SMTP not configured, printed to logs) ✓", status_code=200)
         return RedirectResponse(f"/invoices/{iid}", status_code=303)
@@ -766,6 +859,12 @@ def invoice_send(request: Request, iid: int):
             s.send_message(msg)
         print(f"[EMAIL] sent {inv['number']} to {client['email']}")
         db.set_invoice_status(iid, "sent")
+        try:
+            if not (inv["due_date"] if "due_date" in inv.keys() else None):
+                net = int(os.environ.get("CHASE_NET_DAYS", str(CHASE_DEFAULT_NET_DAYS)))
+                db.set_invoice_due(iid, (datetime.now(timezone.utc).date() + timedelta(days=net)).isoformat())
+        except Exception as e:
+            print("[CHASE-DUE-ERR]", e)
         if request.headers.get("hx-request"):
             return PlainTextResponse(f"Invoice {inv['number']} emailed to {client['email']} ✓", status_code=200)
         return RedirectResponse(f"/invoices/{iid}", status_code=303)
@@ -818,6 +917,36 @@ def recurring_run_manual(request: Request):
     if request.headers.get("hx-request"):
         return PlainTextResponse(f"Recurring run: created {len(created)} invoices: {', '.join(created) if created else 'none due'}", status_code=200)
     return RedirectResponse("/dashboard", status_code=303)
+
+# ---------- chase routes ----------
+@app.post("/invoices/{iid}/paid")
+def invoice_paid(request: Request, iid: int):
+    u = require_user(request)
+    inv = db.get_invoice(iid, u["id"])
+    if not inv:
+        raise HTTPException(status_code=404)
+    db.mark_invoice_paid(iid, u["id"])
+    print(f"[CHASE] invoice {inv['number']} marked paid — reminders stopped")
+    if request.headers.get("hx-request"):
+        return PlainTextResponse(f"Invoice {inv['number']} marked paid ✓ reminders stopped", status_code=200)
+    return RedirectResponse(f"/invoices/{iid}", status_code=303)
+
+@app.post("/invoices/{iid}/chase-pause")
+def chase_pause(request: Request, iid: int):
+    u = require_user(request)
+    inv = db.get_invoice(iid, u["id"])
+    if not inv:
+        raise HTTPException(status_code=404)
+    db.toggle_chase_pause(iid, u["id"])
+    if request.headers.get("hx-request"):
+        return PlainTextResponse("Chase pause toggled", status_code=200)
+    return RedirectResponse(f"/invoices/{iid}", status_code=303)
+
+@app.get("/api/chase-due")
+def api_chase_due(send: int = 0):
+    # cron entrypoint (no auth, like the internal loop): GET /api/chase-due?send=1
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"due": chase_check(send=bool(send))})
 
 # ---------- billing / stripe ----------
 @app.get("/billing", response_class=HTMLResponse)
