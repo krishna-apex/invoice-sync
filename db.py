@@ -118,6 +118,14 @@ def init_db():
             conn.close()
         except Exception:
             pass
+    # migrate: tax_percent on clients (GST/VAT per client)
+    try:
+        conn = get_conn()
+        conn.execute("ALTER TABLE clients ADD COLUMN tax_percent REAL DEFAULT 0")
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
     print("[DB] initialized at", DB_PATH)
 
 # ---------- auth ----------
@@ -206,13 +214,17 @@ def set_api_token(user_id: int, token: str):
     conn.close()
 
 # ---------- clients ----------
-def add_client(user_id, name, email, currency, rate, custom_fields_json):
+def add_client(user_id, name, email, currency, rate, custom_fields_json, tax_percent=0):
     now = datetime.now(timezone.utc).isoformat()
     conn = get_conn()
     cur = conn.cursor()
+    try:
+        taxp = float(tax_percent or 0)
+    except Exception:
+        taxp = 0
     cur.execute(
-        "INSERT INTO clients (user_id, name, email, currency, rate, custom_fields_json, created_at) VALUES (?,?,?,?,?,?,?)",
-        (user_id, name, email, currency or "USD", float(rate or 0), custom_fields_json, now),
+        "INSERT INTO clients (user_id, name, email, currency, rate, custom_fields_json, tax_percent, created_at) VALUES (?,?,?,?,?,?,?,?)",
+        (user_id, name, email, currency or "USD", float(rate or 0), custom_fields_json, taxp, now),
     )
     cid = cur.lastrowid
     conn.commit()
@@ -235,12 +247,22 @@ def get_client(cid, user_id=None):
     conn.close()
     return row
 
-def update_client(cid, user_id, name, email, currency, rate, custom_fields_json):
+def update_client(cid, user_id, name, email, currency, rate, custom_fields_json, tax_percent=None):
     conn = get_conn()
-    conn.execute(
-        "UPDATE clients SET name=?, email=?, currency=?, rate=?, custom_fields_json=? WHERE id=? AND user_id=?",
-        (name, email, currency or "USD", float(rate or 0), custom_fields_json, cid, user_id),
-    )
+    if tax_percent is None:
+        conn.execute(
+            "UPDATE clients SET name=?, email=?, currency=?, rate=?, custom_fields_json=? WHERE id=? AND user_id=?",
+            (name, email, currency or "USD", float(rate or 0), custom_fields_json, cid, user_id),
+        )
+    else:
+        try:
+            taxp = float(tax_percent or 0)
+        except Exception:
+            taxp = 0
+        conn.execute(
+            "UPDATE clients SET name=?, email=?, currency=?, rate=?, custom_fields_json=?, tax_percent=? WHERE id=? AND user_id=?",
+            (name, email, currency or "USD", float(rate or 0), custom_fields_json, taxp, cid, user_id),
+        )
     conn.commit()
     conn.close()
 

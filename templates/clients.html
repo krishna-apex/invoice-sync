@@ -55,6 +55,13 @@
         <input name="rate" placeholder="95.00" type="number" step="0.01" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
       </div>
     </div>
+    <div>
+      <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Tax % <span class="normal-case font-medium text-slate-500">— GST/VAT on every invoice</span></label>
+      <div class="mt-1.5 relative">
+        <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
+        <input name="tax" placeholder="18" type="number" step="0.01" min="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+      </div>
+    </div>
     <div class="sm:col-span-2">
       <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Custom invoice fields <span class="normal-case font-medium text-slate-500">— PO, tax ID, etc. (shows on PDF)</span></label>
       <input name="custom_fields" placeholder='PO: 8841, tax ID: 456 — or {"PO":"8841","tax":"456"}' class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-mono focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">

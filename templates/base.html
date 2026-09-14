@@ -125,5 +125,30 @@
       </div>
     </div>
   </footer>
+
+  {% if user %}
+  <!-- mobile bottom nav -->
+  <nav class="sm:hidden fixed bottom-0 inset-x-0 z-40 bg-white/90 glass border-t border-slate-200 px-6 py-2 flex items-center justify-between text-[11px] font-semibold text-slate-600">
+    <a href="/dashboard" class="flex flex-col items-center gap-0.5 py-1 {% if request.url.path=='/dashboard' %}text-slate-900{% endif %}">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+      Home
+    </a>
+    <a href="/clients" class="flex flex-col items-center gap-0.5 py-1 {% if request.url.path.startswith('/clients') %}text-slate-900{% endif %}">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      Clients
+    </a>
+    <a href="/invoices/new" class="flex flex-col items-center gap-0.5 -mt-6">
+      <span class="w-12 h-12 rounded-full bg-brand-600 text-white flex items-center justify-center shadow-card">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+      </span>
+      New
+    </a>
+    <a href="/billing" class="flex flex-col items-center gap-0.5 py-1 {% if request.url.path.startswith('/billing') %}text-slate-900{% endif %}">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+      Billing
+    </a>
+  </nav>
+  <div class="sm:hidden h-20"></div>
+  {% endif %}
 </body>
 </html>

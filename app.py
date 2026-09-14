@@ -38,6 +38,34 @@ FREE_LIMIT = 5
 CHASE_CADENCE = (1, 7, 14, 30)  # days overdue on which to nudge
 CHASE_DEFAULT_NET_DAYS = 14     # due date = sent date + NET (override via CHASE_NET_DAYS)
 
+# App timezone for all day boundaries (invoices, due dates, chase cadence).
+# Default Asia/Kolkata (primary market); override with APP_TZ=Europe/Berlin etc.
+from zoneinfo import ZoneInfo
+APP_TZ = ZoneInfo(os.environ.get("APP_TZ", "Asia/Kolkata"))
+
+def today_date():
+    return datetime.now(APP_TZ).date()
+
+def today_iso():
+    return today_date().isoformat()
+
+def compute_totals(entries, rate, tax_pct=0):
+    """(subtotal, tax, total): hours×rate plus tax%. Single money-math source."""
+    total_secs = sum(int(e["seconds"]) for e in entries) if entries else 0
+    subtotal = round(total_secs / 3600 * float(rate or 0), 2)
+    try:
+        taxp = float(tax_pct or 0)
+    except Exception:
+        taxp = 0
+    tax = round(subtotal * taxp / 100, 2)
+    return subtotal, tax, round(subtotal + tax, 2)
+
+def client_tax_pct(client):
+    try:
+        return float((client["tax_percent"] if "tax_percent" in client.keys() else 0) or 0)
+    except Exception:
+        return 0
+
 def notify_telegram(text: str) -> str:
     """Send via Telegram bot if configured, else log. Returns mode string."""
     tok = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -60,7 +88,7 @@ def notify_telegram(text: str) -> str:
 def chase_check(send: bool):
     """Scan overdue invoices at cadence points. Returns [{invoice, invoice_id, day, mode}]."""
     from datetime import date as _date
-    today = _date.today()
+    today = today_date()
     results = []
     for inv in db.get_overdue():
         due = (inv["due_date"] or "")[:10]
@@ -122,18 +150,19 @@ async def recurring_loop():
                         db.update_recurring_next_run(tmpl["id"], nxt)
                         continue
                     # generate simple invoice for last period
-                    period_end = datetime.now(timezone.utc).date().isoformat()
-                    period_start = (datetime.now(timezone.utc).date() - timedelta(days=int(tmpl["period_days"]))).isoformat()
+                    period_end = today_date().isoformat()
+                    period_start = (today_date() - timedelta(days=int(tmpl["period_days"]))).isoformat()
                     # pull time entries for period
                     entries = db.list_time_entries(tmpl["user_id"], client_id=tmpl["client_id"], start=period_start, end=period_end)
                     rate = float(client["rate"] or 0)
+                    taxp = client_tax_pct(client)
                     if entries and rate:
-                        total_secs = sum(int(e["seconds"]) for e in entries)
-                        amount = round(total_secs / 3600 * rate, 2)
+                        _, _, amount = compute_totals(entries, rate, taxp)
                     else:
-                        amount = float(tmpl["amount"] or rate or 0)
-                        if amount == 0 and entries:
-                            amount = round(sum(int(e["seconds"]) for e in entries) / 3600 * 50, 2)  # fallback
+                        base = float(tmpl["amount"] or rate or 0)
+                        if base == 0 and entries:
+                            base = round(sum(int(e["seconds"]) for e in entries) / 3600 * 50, 2)  # fallback
+                        amount = round(base * (1 + taxp / 100), 2)
                     iid, num = db.create_invoice(tmpl["user_id"], tmpl["client_id"], period_start, period_end, amount, status="draft")
                     inv = db.get_invoice(iid)
                     # generate pdf
@@ -272,7 +301,7 @@ def dashboard(request: Request):
             if not due:
                 continue
             try:
-                days = (_date.today() - _date.fromisoformat(due)).days
+                days = (today_date() - _date.fromisoformat(due)).days
             except Exception:
                 continue
             if days > 0:
@@ -303,6 +332,7 @@ def create_client(request: Request,
     email: str = Form(""),
     currency: str = Form("USD"),
     rate: str = Form("0"),
+    tax: str = Form("0"),
     custom_fields: str = Form("")):
     u = require_user(request)
     if not name.strip():
@@ -335,7 +365,11 @@ def create_client(request: Request,
         rate_val = float(rate) if rate else 0
     except:
         rate_val = 0
-    db.add_client(u["id"], name.strip(), email.strip(), currency.strip() or "USD", rate_val, cf_json)
+    try:
+        tax_val = float(tax) if tax else 0
+    except:
+        tax_val = 0
+    db.add_client(u["id"], name.strip(), email.strip(), currency.strip() or "USD", rate_val, cf_json, tax_val)
     if request.headers.get("hx-request"):
         clients = db.list_clients(u["id"])
         return templates.TemplateResponse(request, "clients_list_partial.html", {"request": request, "user": u, "clients": clients})
@@ -355,6 +389,7 @@ def update_client(request: Request, cid: int,
     email: str = Form(""),
     currency: str = Form("USD"),
     rate: str = Form("0"),
+    tax: str = Form("0"),
     custom_fields: str = Form("")):
     u = require_user(request)
     c = db.get_client(cid, u["id"])
@@ -382,7 +417,11 @@ def update_client(request: Request, cid: int,
         rate_val = float(rate) if rate else 0
     except:
         rate_val = 0
-    db.update_client(cid, u["id"], name.strip(), email.strip(), currency.strip() or "USD", rate_val, cf_json)
+    try:
+        tax_val = float(tax) if tax else 0
+    except:
+        tax_val = 0
+    db.update_client(cid, u["id"], name.strip(), email.strip(), currency.strip() or "USD", rate_val, cf_json, tax_val)
     return RedirectResponse(f"/clients/{cid}", status_code=303)
 
 @app.post("/clients/{cid}/delete")
@@ -419,7 +458,7 @@ def parse_csv_text(csv_text: str):
                 continue
             desc = row[0].strip()
             val = row[1].strip()
-            date_str = row[2].strip() if len(row) >=3 else datetime.now(timezone.utc).date().isoformat()
+            date_str = row[2].strip() if len(row) >=3 else today_date().isoformat()
             # val may be "2.5", "2.5h", "7200", "01:30:00"
             seconds = None
             if ":" in val:
@@ -460,7 +499,7 @@ def parse_csv_text(csv_text: str):
                 if "T" in date_str:
                     date_str = date_str.split("T")[0]
             except:
-                date_str = datetime.now(timezone.utc).date().isoformat()
+                date_str = today_date().isoformat()
             entries.append((desc, seconds, date_str))
         except Exception as e:
             print("[CSV-PARSE-ERR] row", row, e)
@@ -690,22 +729,24 @@ def invoice_new_post(request: Request,
 
     entries = db.list_time_entries(u["id"], client_id=client_id, start=period_start, end=period_end)
     rate = float(client["rate"] or 0)
+    taxp = client_tax_pct(client)
+    subtotal, taxamt, amount = compute_totals(entries, rate, taxp)
     total_secs = sum(int(e["seconds"]) for e in entries) if entries else 0
     total_hours = total_secs / 3600
-    # if fixed line items via custom_fields_json? check for fixed amount
-    amount = round(total_hours * rate, 2) if rate else 0
-    # if no rate but custom_fields has fixed amount, try parse
+    # fixed-amount fallback (no hours): pre-tax base from custom fields + tax
     if amount == 0 and not entries:
-        # try to allow manual amount? fallback 0, but we still create invoice with 0 and let user see
-        # if client has no rate, we could try to look at custom_fields_json for "fixed" amount
         try:
             cf = client["custom_fields_json"]
             if cf:
                 j = json.loads(cf) if isinstance(cf, str) and cf.strip().startswith("{") else {}
+                base = 0
                 if isinstance(j, dict) and "fixed_amount" in j:
-                    amount = float(j["fixed_amount"])
+                    base = float(j["fixed_amount"])
                 elif isinstance(j, dict) and "amount" in j:
-                    amount = float(j["amount"])
+                    base = float(j["amount"])
+                subtotal = round(base, 2)
+                taxamt = round(base * taxp / 100, 2)
+                amount = round(base + taxamt, 2)
         except:
             pass
     # if still 0 and entries exist but rate 0, amount remains 0 — we still allow but warn
@@ -714,6 +755,8 @@ def invoice_new_post(request: Request,
         "entries": entries,
         "total_secs": total_secs,
         "total_hours": round(total_hours,2),
+        "subtotal": subtotal,
+        "tax": taxamt,
         "amount": amount,
         "period_start": period_start,
         "period_end": period_end,
@@ -779,7 +822,7 @@ def invoice_detail(request: Request, iid: int):
         due = (inv["due_date"] or "")[:10] if "due_date" in inv.keys() else ""
         if inv["status"] == "sent" and not (inv["paid"] if "paid" in inv.keys() else 0) and due:
             from datetime import date as _date
-            days_overdue = (_date.today() - _date.fromisoformat(due)).days
+            days_overdue = (today_date() - _date.fromisoformat(due)).days
     except Exception:
         pass
     return templates.TemplateResponse(request, "invoice_detail.html", {"request": request, "user": u, "invoice": inv, "client": client, "entries": entries, "days_overdue": days_overdue, "cadence": CHASE_CADENCE})
@@ -835,7 +878,7 @@ def invoice_send(request: Request, iid: int):
         try:
             if not (inv["due_date"] if "due_date" in inv.keys() else None):
                 net = int(os.environ.get("CHASE_NET_DAYS", str(CHASE_DEFAULT_NET_DAYS)))
-                db.set_invoice_due(iid, (datetime.now(timezone.utc).date() + timedelta(days=net)).isoformat())
+                db.set_invoice_due(iid, (today_date() + timedelta(days=net)).isoformat())
         except Exception as e:
             print("[CHASE-DUE-ERR]", e)
         if request.headers.get("hx-request"):
@@ -862,7 +905,7 @@ def invoice_send(request: Request, iid: int):
         try:
             if not (inv["due_date"] if "due_date" in inv.keys() else None):
                 net = int(os.environ.get("CHASE_NET_DAYS", str(CHASE_DEFAULT_NET_DAYS)))
-                db.set_invoice_due(iid, (datetime.now(timezone.utc).date() + timedelta(days=net)).isoformat())
+                db.set_invoice_due(iid, (today_date() + timedelta(days=net)).isoformat())
         except Exception as e:
             print("[CHASE-DUE-ERR]", e)
         if request.headers.get("hx-request"):
@@ -899,11 +942,15 @@ def recurring_run_manual(request: Request):
                 nxt = (datetime.now(timezone.utc) + timedelta(days=int(tmpl["period_days"]))).isoformat()
                 db.update_recurring_next_run(tmpl["id"], nxt)
                 continue
-            period_end = datetime.now(timezone.utc).date().isoformat()
-            period_start = (datetime.now(timezone.utc).date() - timedelta(days=int(tmpl["period_days"]))).isoformat()
+            period_end = today_date().isoformat()
+            period_start = (today_date() - timedelta(days=int(tmpl["period_days"]))).isoformat()
             entries = db.list_time_entries(tmpl["user_id"], client_id=tmpl["client_id"], start=period_start, end=period_end)
             rate = float(client["rate"] or 0)
-            amount = round(sum(int(e["seconds"]) for e in entries)/3600*rate,2) if entries and rate else float(tmpl["amount"] or 0)
+            taxp = client_tax_pct(client)
+            if entries and rate:
+                _, _, amount = compute_totals(entries, rate, taxp)
+            else:
+                amount = round(float(tmpl["amount"] or 0) * (1 + taxp / 100), 2)
             iid, number = db.create_invoice(tmpl["user_id"], tmpl["client_id"], period_start, period_end, amount)
             inv = db.get_invoice(iid)
             path = pdfgen.generate_invoice_pdf(inv, client, entries, user["email"])

@@ -44,6 +44,13 @@
               <input name="rate" value="{{ client.rate }}" type="number" step="0.01" class="w-full bg-white border border-slate-200 rounded-xl pl-7 pr-3 py-3 text-sm focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
             </div>
           </div>
+          <div>
+            <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Tax % <span class="normal-case font-medium text-slate-500">— GST/VAT</span></label>
+            <div class="mt-1.5 relative">
+              <span class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">%</span>
+              <input name="tax" value="{{ client.tax_percent or 0 }}" type="number" step="0.01" min="0" class="w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+            </div>
+          </div>
         </div>
         <div>
           <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Custom invoice fields <span class="normal-case font-medium text-slate-500">— JSON or PO:123, tax:456</span></label>
