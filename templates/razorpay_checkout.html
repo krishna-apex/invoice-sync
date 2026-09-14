@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Pay with Razorpay — InvoiceSync{% endblock %}
+{% block content %}
+<div class="max-w-lg mx-auto">
+  <a href="/billing" class="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-slate-900">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/></svg>
+    Back to billing
+  </a>
+
+  <div class="mt-4 bg-white rounded-[24px] border border-slate-200 shadow-soft overflow-hidden">
+    <div class="h-1.5 bg-gradient-to-r from-[#3395FF] to-[#0A2540]"></div>
+    <div class="p-6 sm:p-7">
+      <div class="flex items-center gap-3">
+        <div class="w-11 h-11 rounded-xl bg-[#0A2540] text-white flex items-center justify-center font-extrabold">Rz</div>
+        <div>
+          <h1 class="text-xl font-extrabold tracking-tight">InvoiceSync Pro {{ plan|title }}</h1>
+          <div class="text-sm text-slate-500">{{ user.email }}</div>
+        </div>
+        <div class="ml-auto text-right">
+          <div class="text-2xl font-extrabold tracking-tight">₹{{ "%.0f"|format(amount / 100) }}</div>
+          <div class="text-xs text-slate-500">/{% if plan == 'annual' %}yr{% else %}mo{% endif %} incl. GST</div>
+        </div>
+      </div>
+
+      <div class="mt-5 flex flex-wrap items-center gap-1.5">
+        <span class="text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full">UPI</span>
+        <span class="text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-full">Visa</span>
+        <span class="text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-full">Mastercard</span>
+        <span class="text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-full">RuPay</span>
+        <span class="text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-full">Netbanking</span>
+        <span class="text-xs font-bold bg-slate-50 text-slate-700 border border-slate-200 px-2.5 py-1 rounded-full">Wallets</span>
+      </div>
+
+      {% if simulated %}
+      <div class="mt-5 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 text-xs leading-relaxed text-amber-800">
+        Test mode — no Razorpay keys configured. This simulates a successful payment and flips you to Pro.
+      </div>
+      <form method="post" action="/billing/razorpay/verify" class="mt-4">
+        <input type="hidden" name="razorpay_order_id" value="{{ order_id }}">
+        <input type="hidden" name="razorpay_payment_id" value="pay_TEST123">
+        <input type="hidden" name="razorpay_signature" value="test">
+        <button class="w-full bg-[#3395FF] text-white rounded-xl py-3 text-sm font-bold hover:bg-[#0A2540] transition">Simulate successful payment — ₹{{ "%.0f"|format(amount / 100) }}</button>
+      </form>
+      {% else %}
+      <button id="rzp-btn" class="mt-5 w-full bg-[#3395FF] text-white rounded-xl py-3 text-sm font-bold hover:bg-[#0A2540] transition flex items-center justify-center gap-2">
+        Pay ₹{{ "%.0f"|format(amount / 100) }} securely
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="10" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </button>
+      <div class="mt-3 text-xs text-center text-slate-500">Secured by <span class="font-bold text-slate-700">Razorpay</span> • UPI, cards, netbanking, wallets</div>
+      <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+      <script>
+        document.getElementById('rzp-btn').onclick = function (e) {
+          var rzp = new Razorpay({
+            key: {{ key_id|tojson }},
+            amount: {{ amount|tojson }},
+            currency: 'INR',
+            name: 'InvoiceSync Pro',
+            description: {{ ("Pro " + plan)|tojson }},
+            order_id: {{ order_id|tojson }},
+            prefill: { email: {{ user.email|tojson }} },
+            theme: { color: '#3395FF' },
+            handler: function (resp) {
+              var f = document.createElement('form');
+              f.method = 'POST'; f.action = '/billing/razorpay/verify';
+              ['razorpay_order_id', 'razorpay_payment_id', 'razorpay_signature'].forEach(function (k) {
+                var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = resp[k]; f.appendChild(i);
+              });
+              document.body.appendChild(f); f.submit();
+            }
+          });
+          rzp.on('payment.failed', function () { alert('Payment failed. No money was charged. You can retry.'); });
+          rzp.open();
+          e.preventDefault();
+        };
+      </script>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

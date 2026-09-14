@@ -1002,7 +1002,10 @@ def billing_page(request: Request):
     sub = db.get_subscription(u["id"])
     cnt = db.count_invoices_this_month(u["id"])
     return templates.TemplateResponse(request, "billing.html", {
-        "request": request, "user": u, "subscription": sub, "count": cnt, "limit": FREE_LIMIT, "error": None
+        "request": request, "user": u, "subscription": sub, "count": cnt, "limit": FREE_LIMIT, "error": None,
+        "razorpay": bool(os.environ.get("RAZORPAY_KEY_ID")),
+        "success": request.query_params.get("success"),
+        "canceled": request.query_params.get("canceled"),
     })
 
 @app.post("/billing/checkout")
@@ -1174,6 +1177,101 @@ async def stripe_webhook(request: Request):
         import traceback; traceback.print_exc()
         return PlainTextResponse(f"webhook error: {e}", status_code=500)
     return PlainTextResponse("ok", status_code=200)
+
+# ---------- billing / razorpay (INR: UPI, cards, netbanking) ----------
+RZP_MONTHLY_PAISE = 49900   # ₹499/mo
+RZP_ANNUAL_PAISE = 499900   # ₹4,999/yr
+
+def rzp_client():
+    kid = os.environ.get("RAZORPAY_KEY_ID", "")
+    ksec = os.environ.get("RAZORPAY_KEY_SECRET", "")
+    if not kid or not ksec:
+        return None, "", ""
+    import razorpay
+    return razorpay.Client(auth=(kid, ksec)), kid, ksec
+
+def rzp_verify_signature(order_id, payment_id, signature, secret):
+    import hmac
+    import hashlib
+    import secrets as _s
+    msg = f"{order_id}|{payment_id}".encode()
+    expected = hmac.new(secret.encode(), msg, hashlib.sha256).hexdigest()
+    return _s.compare_digest(expected, signature)
+
+@app.post("/billing/razorpay/order")
+def rzp_order(request: Request, plan: str = Form("monthly")):
+    u = require_user(request)
+    plan = "annual" if plan == "annual" else "monthly"
+    amount = RZP_ANNUAL_PAISE if plan == "annual" else RZP_MONTHLY_PAISE
+    client, kid, _ksec = rzp_client()
+    if client is None:
+        print("[RZP-SKIP] no RAZORPAY_KEY_ID/SECRET, simulated checkout")
+        return templates.TemplateResponse(request, "razorpay_checkout.html", {
+            "request": request, "user": u, "plan": plan, "amount": amount,
+            "order_id": f"order_TEST_{u['id']}_{plan}", "simulated": True,
+        })
+    try:
+        import time
+        order = client.order.create({
+            "amount": amount, "currency": "INR", "payment_capture": 1,
+            "receipt": f"isync-u{u['id']}-{plan}-{int(time.time())}",
+            "notes": {"user_id": str(u["id"]), "plan": plan, "email": u["email"]},
+        })
+        return templates.TemplateResponse(request, "razorpay_checkout.html", {
+            "request": request, "user": u, "plan": plan, "amount": amount,
+            "order_id": order["id"], "key_id": kid, "simulated": False,
+        })
+    except Exception as e:
+        print("[RZP-ORDER-ERR]", e)
+        sub = db.get_subscription(u["id"])
+        return templates.TemplateResponse(request, "billing.html", {
+            "request": request, "user": u, "subscription": sub,
+            "count": db.count_invoices_this_month(u["id"]), "limit": FREE_LIMIT,
+            "error": f"Razorpay order failed: {e}", "razorpay": True,
+        })
+
+@app.post("/billing/razorpay/verify")
+async def rzp_verify(request: Request):
+    form = await request.form()
+    order_id = (form.get("razorpay_order_id") or "").strip()
+    payment_id = (form.get("razorpay_payment_id") or "").strip()
+    signature = (form.get("razorpay_signature") or "").strip()
+    if not order_id or not payment_id or not signature:
+        raise HTTPException(status_code=400, detail="missing payment fields")
+    _, _, ksec = rzp_client()
+    if ksec:
+        # live path: real HMAC check; user/plan from the Razorpay order notes
+        if not rzp_verify_signature(order_id, payment_id, signature, ksec):
+            print(f"[RZP-VERIFY-FAIL] order {order_id}")
+            raise HTTPException(status_code=400, detail="signature mismatch")
+        try:
+            client, _, _ = rzp_client()
+            order = client.order.fetch(order_id)
+            notes = order.get("notes", {}) or {}
+            email, plan = notes.get("email"), notes.get("plan", "monthly")
+        except Exception as e:
+            print("[RZP-FETCH-ERR]", e)
+            raise HTTPException(status_code=400, detail="order lookup failed")
+        user = db.get_user_by_email(email) if email else None
+        if not user:
+            raise HTTPException(status_code=400, detail="unknown user")
+        uid = user["id"]
+    else:
+        # simulated path (dev only): test orders flip the logged-in user
+        if not order_id.startswith("order_TEST_"):
+            raise HTTPException(status_code=400, detail="unknown order")
+        u = current_user(request)
+        if not u:
+            raise HTTPException(status_code=303, headers={"location": "/login"})
+        uid = u["id"]
+        plan = "monthly" if "monthly" in order_id else "annual"
+        print(f"[RZP-SIM] user {uid} -> pro ({plan})")
+    months = 12 if plan == "annual" else 1
+    renews = (datetime.now(timezone.utc) + timedelta(days=30 * months)).isoformat()
+    db.set_plan(uid, "pro")
+    db.upsert_subscription(uid, payment_id, "pro", "active", renews)
+    print(f"[RZP] user {uid} -> pro ({plan}, payment {payment_id})")
+    return RedirectResponse("/billing?success=1", status_code=303)
 
 if __name__ == "__main__":
     import uvicorn
