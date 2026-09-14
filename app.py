@@ -825,7 +825,12 @@ def invoice_detail(request: Request, iid: int):
             days_overdue = (today_date() - _date.fromisoformat(due)).days
     except Exception:
         pass
-    return templates.TemplateResponse(request, "invoice_detail.html", {"request": request, "user": u, "invoice": inv, "client": client, "entries": entries, "days_overdue": days_overdue, "cadence": CHASE_CADENCE})
+    try:
+        _cf = json.loads(client["custom_fields_json"]) if client["custom_fields_json"] else None
+        custom_fields = _cf if isinstance(_cf, dict) else None
+    except Exception:
+        custom_fields = None
+    return templates.TemplateResponse(request, "invoice_detail.html", {"request": request, "user": u, "invoice": inv, "client": client, "entries": entries, "days_overdue": days_overdue, "cadence": CHASE_CADENCE, "custom_fields": custom_fields})
 
 @app.get("/invoices/{iid}/pdf")
 def invoice_pdf(request: Request, iid: int):

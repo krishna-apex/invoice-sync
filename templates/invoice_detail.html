@@ -63,9 +63,20 @@
         </div>
 
         {% if client.custom_fields_json %}
-        <div class="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-3">
+        <div class="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-3 min-w-0">
           <div class="text-xs font-semibold tracking-wide uppercase text-amber-800">Custom fields (on PDF)</div>
-          <div class="mt-1 font-mono text-xs bg-white border border-amber-200 rounded-xl px-3 py-2">{{ client.custom_fields_json }}</div>
+          {% if custom_fields %}
+          <dl class="mt-2 space-y-1.5 text-xs">
+            {% for k, v in custom_fields.items() %}
+            <div class="bg-white border border-amber-200 rounded-xl px-3 py-2 flex flex-col gap-0.5 min-w-0">
+              <dt class="font-semibold text-slate-500 break-words">{{ k }}</dt>
+              <dd class="font-mono text-slate-800 break-all whitespace-pre-wrap">{{ v }}</dd>
+            </div>
+            {% endfor %}
+          </dl>
+          {% else %}
+          <div class="mt-2 font-mono text-xs bg-white border border-amber-200 rounded-xl px-3 py-2 break-all whitespace-pre-wrap overflow-hidden">{{ client.custom_fields_json }}</div>
+          {% endif %}
         </div>
         {% endif %}
 
