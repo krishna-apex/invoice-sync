@@ -10,6 +10,7 @@ import io
 from email.message import EmailMessage
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from contextlib import asynccontextmanager
 
 import requests
 from fastapi import FastAPI, Request, Form, HTTPException
@@ -23,7 +24,14 @@ import pdf as pdfgen
 db.init_db()
 
 BASE_DIR = Path(__file__).parent
-app = FastAPI(title="InvoiceSync")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    asyncio.create_task(recurring_loop())
+    print("[APP] InvoiceSync started, recurring loop every 60s")
+    yield
+
+app = FastAPI(title="InvoiceSync", lifespan=lifespan)
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.filters["fmt_money"] = pdfgen.fmt_money
 templates.env.globals["fmt_money"] = pdfgen.fmt_money
@@ -217,10 +225,7 @@ async def recurring_loop():
             print("[RECURRING-ERR]", e)
         await asyncio.sleep(60)
 
-@app.on_event("startup")
-async def start_loop():
-    asyncio.create_task(recurring_loop())
-    print("[APP] InvoiceSync started, recurring loop every 60s")
+# recurring background loop is started by the lifespan handler above
 
 # ---------- pages ----------
 @app.get("/", response_class=HTMLResponse)
