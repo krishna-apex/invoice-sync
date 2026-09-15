@@ -25,6 +25,15 @@ db.init_db()
 BASE_DIR = Path(__file__).parent
 app = FastAPI(title="InvoiceSync")
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
+templates.env.filters["fmt_money"] = pdfgen.fmt_money
+templates.env.globals["fmt_money"] = pdfgen.fmt_money
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    if exc.status_code == 303 and exc.headers and "location" in exc.headers:
+        return RedirectResponse(exc.headers["location"], status_code=303)
+    from fastapi.responses import JSONResponse
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 # static (optional, not required but mounted if exists)
 static_dir = BASE_DIR / "static"
@@ -42,6 +51,28 @@ CHASE_DEFAULT_NET_DAYS = 14     # due date = sent date + NET (override via CHASE
 # Default Asia/Kolkata (primary market); override with APP_TZ=Europe/Berlin etc.
 from zoneinfo import ZoneInfo
 APP_TZ = ZoneInfo(os.environ.get("APP_TZ", "Asia/Kolkata"))
+
+def get_user_tz(user):
+    if user:
+        try:
+            tz_str = user["timezone"] if "timezone" in user.keys() else None
+            if tz_str:
+                return ZoneInfo(tz_str)
+        except Exception:
+            pass
+    return APP_TZ
+
+STATIC_RATES_TO_INR = {
+    "USD": 83.5,
+    "EUR": 90.0,
+    "GBP": 106.0,
+    "CAD": 61.5,
+    "AUD": 54.5,
+    "JPY": 0.56,
+    "SGD": 62.0,
+    "CHF": 93.0,
+    "AED": 22.7,
+}
 
 def today_date():
     return datetime.now(APP_TZ).date()
@@ -104,7 +135,7 @@ def chase_check(send: bool):
             continue
         text = (
             f"Invoice {inv['number']} — {inv['client_name'] or 'client'} owes "
-            f"{inv['client_currency'] or ''} {float(inv['amount'] or 0):.2f}, "
+            f"{pdfgen.fmt_money(inv['amount'], inv['client_currency'] or 'USD')}, "
             f"{days}d overdue. Send the day-{days} nudge."
         )
         mode = "preview"
@@ -245,36 +276,33 @@ def logout(request: Request):
 def dashboard(request: Request):
     u = require_user(request)
     clients = db.list_clients(u["id"])
-    invoices = db.list_invoices(u["id"], limit=20)
-    # enrich invoices with client name
+    invoices = db.list_invoices(u["id"], limit=50)
+    # enrich invoices with client name and currency
     enriched = []
-    total_revenue = 0.0
-    month_revenue = 0.0
+    month_revenue_by_curr = {}
+    total_revenue_by_curr = {}
+    outstanding_by_curr = {}
     now = datetime.now(timezone.utc)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     for inv in invoices:
         d = dict(inv)
         c = db.get_client(inv["client_id"])
         d["client_name"] = c["name"] if c else f"#{inv['client_id']}"
-        d["client_currency"] = c["currency"] if c else "USD"
+        d["client_currency"] = (c["currency"] if c else "USD").upper()
         enriched.append(d)
+        curr = d["client_currency"]
         try:
-            total_revenue += float(inv["amount"] or 0)
+            amt = float(inv["amount"] or 0)
+            total_revenue_by_curr[curr] = round(total_revenue_by_curr.get(curr, 0.0) + amt, 2)
             if inv["created_at"] >= month_start:
-                month_revenue += float(inv["amount"] or 0)
-        except:
+                month_revenue_by_curr[curr] = round(month_revenue_by_curr.get(curr, 0.0) + amt, 2)
+            # outstanding: sent/draft and not paid
+            is_paid = bool((inv["paid"] if "paid" in inv.keys() else 0) or inv["status"] == "paid")
+            if not is_paid:
+                outstanding_by_curr[curr] = round(outstanding_by_curr.get(curr, 0.0) + amt, 2)
+        except Exception:
             pass
-    # also include older invoices for total revenue if limit 20 not enough
-    if len(invoices) == 20:
-        try:
-            conn = db.get_conn()
-            row = conn.execute("SELECT COALESCE(SUM(amount),0) s FROM invoices WHERE user_id=?", (u["id"],)).fetchone()
-            total_revenue = float(row["s"] or 0)
-            row2 = conn.execute("SELECT COALESCE(SUM(amount),0) s FROM invoices WHERE user_id=? AND created_at>=?", (u["id"], month_start)).fetchone()
-            month_revenue = float(row2["s"] or 0)
-            conn.close()
-        except:
-            pass
+
     cnt = db.count_invoices_this_month(u["id"])
     limit = FREE_LIMIT if u["plan"] == "free" else 9999
     remaining = max(0, limit - cnt) if u["plan"] == "free" else "∞"
@@ -311,12 +339,39 @@ def dashboard(request: Request):
     except Exception as e:
         print("[CHASE-DASH-ERR]", e)
     overdue.sort(key=lambda d: d["days_overdue"], reverse=True)
+
+    # non-blocking checklist
+    has_sent = any(i.get("status") == "sent" for i in enriched)
+    has_chase = any((i.get("due_date") and not (i.get("chase_paused") or 0)) for i in enriched) or len(overdue) > 0
+    checklist = [
+        {"id": "client", "title": "Create your first client", "done": clients_count > 0, "link": "/clients"},
+        {"id": "hours", "title": "Import tracked hours", "done": entries_count > 0, "link": "#import-time"},
+        {"id": "invoice", "title": "Generate & send invoice", "done": has_sent or len(enriched) > 0, "link": "/invoices/new"},
+        {"id": "chase", "title": "Automated overdue chase", "done": has_chase or len(enriched) > 0, "link": "/dashboard"},
+    ]
+    checklist_done = sum(1 for c in checklist if c["done"])
+
+    # skippable branding prompt after first invoice
+    u_dict = dict(u)
+    show_branding_prompt = (
+        len(enriched) >= 1
+        and not u_dict.get("dismissed_branding_prompt", 0)
+        and (not u_dict.get("business_address") or not u_dict.get("logo_path"))
+    )
+
     return templates.TemplateResponse(request, "dashboard.html", {
         "request": request, "user": u, "clients": clients, "invoices": enriched,
         "count": cnt, "limit": limit, "remaining": remaining, "pct": pct,
-        "total_revenue": total_revenue, "month_revenue": month_revenue,
+        "month_revenue_by_curr": month_revenue_by_curr,
+        "total_revenue_by_curr": total_revenue_by_curr,
+        "outstanding_by_curr": outstanding_by_curr,
+        "total_revenue": sum(total_revenue_by_curr.values()) if total_revenue_by_curr else 0.0,
+        "month_revenue": sum(month_revenue_by_curr.values()) if month_revenue_by_curr else 0.0,
         "total_hours": total_hours, "entries_count": entries_count, "clients_count": clients_count,
-        "overdue": overdue
+        "overdue": overdue,
+        "checklist": checklist,
+        "checklist_done": checklist_done,
+        "show_branding_prompt": show_branding_prompt,
     })
 
 # ---------- clients ----------
@@ -330,7 +385,7 @@ def clients_page(request: Request):
 def create_client(request: Request,
     name: str = Form(...),
     email: str = Form(""),
-    currency: str = Form("USD"),
+    currency: str = Form("INR"),
     rate: str = Form("0"),
     tax: str = Form("0"),
     custom_fields: str = Form("")):
@@ -369,7 +424,8 @@ def create_client(request: Request,
         tax_val = float(tax) if tax else 0
     except:
         tax_val = 0
-    db.add_client(u["id"], name.strip(), email.strip(), currency.strip() or "USD", rate_val, cf_json, tax_val)
+    curr_clean = (currency.strip() or "INR").upper()
+    db.add_client(u["id"], name.strip(), email.strip(), curr_clean, rate_val, cf_json, tax_val)
     if request.headers.get("hx-request"):
         clients = db.list_clients(u["id"])
         return templates.TemplateResponse(request, "clients_list_partial.html", {"request": request, "user": u, "clients": clients})
@@ -387,7 +443,7 @@ def client_detail(request: Request, cid: int):
 def update_client(request: Request, cid: int,
     name: str = Form(...),
     email: str = Form(""),
-    currency: str = Form("USD"),
+    currency: str = Form("INR"),
     rate: str = Form("0"),
     tax: str = Form("0"),
     custom_fields: str = Form("")):
@@ -421,7 +477,8 @@ def update_client(request: Request, cid: int,
         tax_val = float(tax) if tax else 0
     except:
         tax_val = 0
-    db.update_client(cid, u["id"], name.strip(), email.strip(), currency.strip() or "USD", rate_val, cf_json, tax_val)
+    curr_clean = (currency.strip() or "INR").upper()
+    db.update_client(cid, u["id"], name.strip(), email.strip(), curr_clean, rate_val, cf_json, tax_val)
     return RedirectResponse(f"/clients/{cid}", status_code=303)
 
 @app.post("/clients/{cid}/delete")
@@ -712,7 +769,9 @@ def invoice_new_post(request: Request,
     client_id: int = Form(...),
     period_start: str = Form(...),
     period_end: str = Form(...),
-    recurring: str = Form(None)):
+    recurring: str = Form(None),
+    terms: str = Form("Due on receipt"),
+    notes: str = Form("")):
     u = require_user(request)
     client = db.get_client(client_id, u["id"])
     if not client:
@@ -749,7 +808,6 @@ def invoice_new_post(request: Request,
                 amount = round(base + taxamt, 2)
         except:
             pass
-    # if still 0 and entries exist but rate 0, amount remains 0 — we still allow but warn
     preview = {
         "client": client,
         "entries": entries,
@@ -763,35 +821,22 @@ def invoice_new_post(request: Request,
         "count": len(entries),
     }
 
-    # If this is a preview request with HTMX? The form posts to create. We need two-step: preview + confirm.
-    # For simplicity, if entries found and not recurring-checked creation is immediate on POST.
-    # But spec says "shows preview" then generate. We'll do: POST shows preview with confirm button that actually creates.
-    # To keep single POST, we check for a hidden field "confirm" ?
-    # Our form will have two submits: preview vs create. Easier: always create after preview if preview requested via ?preview=1
-    # Let's look at form value: if request has "action" == "preview", just return preview without DB write.
-    # We didn't have action field, so we inspect query? Instead we treat this POST as preview-only unless "confirm" field present.
-    # The template's preview will POST to /invoices/confirm — but we don't have that route. Simpler: This POST directly creates.
-    # We'll support both: if form includes "preview_only", just show preview.
-    # Get form data raw to check
-    # FastAPI already parsed, so we check a field we will add: preview_only
-    # For now, since templates will POST here and expect creation, we create.
+    terms_clean = (terms or "Due on receipt").strip()
+    if "30" in terms_clean:
+        net_days = 30
+    elif "14" in terms_clean:
+        net_days = 14
+    elif "receipt" in terms_clean.lower():
+        net_days = 0
+    else:
+        net_days = int(os.environ.get("CHASE_NET_DAYS", str(CHASE_DEFAULT_NET_DAYS)))
+    due_date = (today_date() + timedelta(days=net_days)).isoformat()
 
-    # To support preview-then-create flow without extra route, we check if amount inquiry:
-    # If the template sends "preview_only=1", return preview page with confirm button
-    # That confirm button will POST to same endpoint with extra field "confirm=1"
-    # So we need to read that field: check if "confirm" not in form -> show preview
-    # But we already defined params fixed. Let's read raw form async? Instead we check if entries retrieval and return preview without creation unless recurring or confirm.
-    # Workaround: check if 'confirm' in request param via query string?
-    # Simpler: always create invoice now (MVP). Preview is the page after creation showing pdf link.
-
-    # Actually to satisfy spec "pick client + date range -> system pulls tracked hours -> builds line items -> shows preview"
-    # We'll treat POST as preview AND create if amount>0 or user confirmed.
-    # Let's create invoice
     try:
-        iid, number = db.create_invoice(u["id"], client_id, period_start, period_end, amount, status="draft")
+        iid, number = db.create_invoice(u["id"], client_id, period_start, period_end, amount, status="draft", terms=terms_clean, notes=notes.strip(), due_date=due_date)
         inv = db.get_invoice(iid)
-        # generate pdf
-        pdf_path = pdfgen.generate_invoice_pdf(inv, client, entries, u["email"])
+        # generate pdf with user business profile
+        pdf_path = pdfgen.generate_invoice_pdf(inv, client, entries, u["email"], user=u)
         db.set_invoice_pdf(iid, pdf_path)
         # if recurring checked, create template
         if recurring == "on" or recurring == "1" or recurring == "true":
@@ -799,7 +844,7 @@ def invoice_new_post(request: Request,
             print(f"[RECURRING] user {u['id']} created template for client {client_id}")
         # For HTMX, return fragment; for normal, redirect to invoice detail
         if request.headers.get("hx-request"):
-            return PlainTextResponse(f"Invoice {number} created: {client['currency']} {amount:.2f} for {len(entries)} entries. <a href='/invoices/{iid}/pdf' class='text-blue-600 underline'>Download PDF</a>", status_code=200)
+            return PlainTextResponse(f"Invoice {number} created: {pdfgen.fmt_money(amount, client['currency'])} for {len(entries)} entries. <a href='/invoices/{iid}' class='text-blue-600 underline'>View Invoice</a>", status_code=200)
         return RedirectResponse(f"/invoices/{iid}", status_code=303)
     except Exception as e:
         print("[INVOICE-ERR]", e)
@@ -815,7 +860,7 @@ def invoice_detail(request: Request, iid: int):
     client = db.get_client(inv["client_id"], u["id"])
     # fix: if client missing, create dummy
     if not client:
-        client = {"name": f"Client #{inv['client_id']}", "email": "", "currency": "USD", "rate": 0, "custom_fields_json": ""}
+        client = {"name": f"Client #{inv['client_id']}", "email": "", "currency": "INR", "rate": 0, "custom_fields_json": ""}
     entries = db.list_time_entries(u["id"], client_id=inv["client_id"], start=inv["period_start"], end=inv["period_end"])
     days_overdue = None
     try:
@@ -830,7 +875,25 @@ def invoice_detail(request: Request, iid: int):
         custom_fields = _cf if isinstance(_cf, dict) else None
     except Exception:
         custom_fields = None
-    return templates.TemplateResponse(request, "invoice_detail.html", {"request": request, "user": u, "invoice": inv, "client": client, "entries": entries, "days_overdue": days_overdue, "cadence": CHASE_CADENCE, "custom_fields": custom_fields})
+
+    curr = ((client["currency"] if "currency" in client.keys() else None) or "INR").strip().upper()
+    is_inr = (curr == "INR")
+    rate = STATIC_RATES_TO_INR.get(curr, 80.0)
+    approx_inr = round(float(inv["amount"] or 0) * rate, 2)
+    static_rate_note = f"static approx @ 1 {curr} ≈ {rate:g} INR"
+    u_dict = dict(u)
+    needs_business_profile = not (u_dict.get("business_name") and u_dict.get("business_address"))
+
+    if request.query_params.get("simulated_paid") or request.query_params.get("paid"):
+        db.mark_invoice_paid(iid, u["id"])
+        inv = db.get_invoice(iid, u["id"])
+
+    return templates.TemplateResponse(request, "invoice_detail.html", {
+        "request": request, "user": u, "invoice": inv, "client": client,
+        "entries": entries, "days_overdue": days_overdue, "cadence": CHASE_CADENCE,
+        "custom_fields": custom_fields, "is_inr": is_inr, "approx_inr": approx_inr,
+        "static_rate_note": static_rate_note, "needs_business_profile": needs_business_profile,
+    })
 
 @app.get("/invoices/{iid}/pdf")
 def invoice_pdf(request: Request, iid: int):
@@ -838,14 +901,194 @@ def invoice_pdf(request: Request, iid: int):
     inv = db.get_invoice(iid, u["id"])
     if not inv:
         raise HTTPException(status_code=404)
-    path = inv["pdf_path"]
-    if not path or not os.path.exists(path):
-        # regenerate on the fly
-        client = db.get_client(inv["client_id"], u["id"])
-        entries = db.list_time_entries(u["id"], client_id=inv["client_id"], start=inv["period_start"], end=inv["period_end"])
-        path = pdfgen.generate_invoice_pdf(inv, client, entries, u["email"])
-        db.set_invoice_pdf(iid, path)
+    client = db.get_client(inv["client_id"], u["id"])
+    entries = db.list_time_entries(u["id"], client_id=inv["client_id"], start=inv["period_start"], end=inv["period_end"])
+    # always pass user=u so current business profile is embedded
+    path = pdfgen.generate_invoice_pdf(inv, client, entries, u["email"], user=u)
+    db.set_invoice_pdf(iid, path)
     return FileResponse(path, media_type="application/pdf", filename=f"{inv['number']}.pdf")
+
+@app.get("/sample-invoice/pdf")
+def sample_invoice_pdf(request: Request):
+    u = require_user(request)
+    sample_inv = {
+        "number": "INV-SAMPLE",
+        "status": "draft",
+        "period_start": "2026-08-01",
+        "period_end": "2026-08-31",
+        "created_at": today_iso(),
+        "amount": 25000.00,
+        "due_date": (today_date() + timedelta(days=14)).isoformat(),
+        "terms": "Net 14",
+        "notes": "Sample terms: Payment due within 14 days. Bank wire or UPI accepted."
+    }
+    sample_client = {
+        "name": "Acme Global Technologies",
+        "email": "billing@acmeglobal.example",
+        "currency": "INR",
+        "rate": 1500.0,
+        "custom_fields_json": json.dumps({"PO": "PO-9942", "GSTIN": "29ABCDE1234F1Z5"}),
+        "tax_percent": 18.0
+    }
+    sample_entries = [
+        {"date": "2026-08-05", "description": "Backend API synchronization", "seconds": 21600},
+        {"date": "2026-08-12", "description": "Mobile-first UI implementation", "seconds": 18000},
+        {"date": "2026-08-20", "description": "Global money flow & currency setup", "seconds": 14400},
+    ]
+    sample_user = {
+        "business_name": "Studio Apex Consulting",
+        "business_address": "42 Innovation Boulevard",
+        "business_city": "Bengaluru",
+        "business_country": "India",
+        "business_tax_id": "GSTIN29AABCS1429B1ZB",
+    }
+    path = pdfgen.generate_invoice_pdf(sample_inv, sample_client, sample_entries, u["email"], user=sample_user, out_dir="pdfs")
+    return FileResponse(path, media_type="application/pdf", filename="INV-SAMPLE.pdf")
+
+@app.post("/business-profile")
+def update_business_profile_post(
+    request: Request,
+    business_name: str = Form(""),
+    business_address: str = Form(""),
+    business_city: str = Form(""),
+    business_country: str = Form(""),
+    business_tax_id: str = Form(""),
+    next_url: str = Form("/dashboard"),
+):
+    u = require_user(request)
+    db.update_business_profile(
+        u["id"],
+        business_name.strip(),
+        business_address.strip(),
+        business_city.strip(),
+        business_country.strip(),
+        business_tax_id.strip()
+    )
+    if next_url and next_url.startswith("/"):
+        return RedirectResponse(next_url, status_code=303)
+    return RedirectResponse("/dashboard", status_code=303)
+
+@app.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request):
+    u = require_user(request)
+    return templates.TemplateResponse(request, "settings.html", {
+        "request": request,
+        "user": u,
+        "saved": request.query_params.get("saved"),
+        "timezones": [
+            "Asia/Kolkata", "UTC", "America/New_York", "America/Chicago",
+            "America/Denver", "America/Los_Angeles", "Europe/London",
+            "Europe/Berlin", "Europe/Paris", "Asia/Dubai", "Asia/Singapore",
+            "Asia/Tokyo", "Australia/Sydney"
+        ]
+    })
+
+@app.post("/settings")
+def settings_post(
+    request: Request,
+    timezone_val: str = Form("Asia/Kolkata"),
+    business_name: str = Form(""),
+    business_address: str = Form(""),
+    business_city: str = Form(""),
+    business_country: str = Form(""),
+    business_tax_id: str = Form(""),
+    upi_id: str = Form(""),
+    payment_link: str = Form(""),
+    logo_path: str = Form(""),
+):
+    u = require_user(request)
+    db.update_user_settings(
+        u["id"],
+        timezone=timezone_val.strip() or "Asia/Kolkata",
+        upi_id=upi_id.strip(),
+        payment_link=payment_link.strip(),
+        business_name=business_name.strip(),
+        business_address=business_address.strip(),
+        business_city=business_city.strip(),
+        business_country=business_country.strip(),
+        business_tax_id=business_tax_id.strip(),
+        logo_path=logo_path.strip()
+    )
+    return RedirectResponse("/settings?saved=1", status_code=303)
+
+@app.post("/settings/dismiss-branding")
+def dismiss_branding_post(request: Request):
+    u = require_user(request)
+    db.dismiss_branding_prompt(u["id"])
+    if request.headers.get("hx-request"):
+        return PlainTextResponse("", status_code=200)
+    return RedirectResponse("/dashboard", status_code=303)
+
+@app.post("/invoices/{iid}/pay")
+def invoice_pay(request: Request, iid: int):
+    u = require_user(request)
+    inv = db.get_invoice(iid, u["id"])
+    if not inv:
+        raise HTTPException(status_code=404)
+    client = db.get_client(inv["client_id"], u["id"])
+    if not client:
+        raise HTTPException(status_code=404)
+
+    curr = ((client["currency"] if "currency" in client.keys() else None) or "USD").strip().upper()
+    amount = float(inv["amount"] or 0)
+
+    if curr == "INR":
+        # Razorpay only for INR
+        amount_paise = int(round(amount * 100))
+        rz_client, kid, _ksec = rzp_client()
+        if rz_client is None:
+            return templates.TemplateResponse(request, "razorpay_checkout.html", {
+                "request": request, "user": u, "plan": f"Invoice {inv['number']}", "amount": amount_paise,
+                "order_id": f"order_INV_{inv['id']}", "simulated": True, "invoice_id": inv["id"]
+            })
+        try:
+            import time
+            order = rz_client.order.create({
+                "amount": amount_paise, "currency": "INR", "payment_capture": 1,
+                "receipt": f"isync-inv{inv['id']}-{int(time.time())}",
+                "notes": {"invoice_id": str(inv["id"]), "email": client["email"] or u["email"]},
+            })
+            return templates.TemplateResponse(request, "razorpay_checkout.html", {
+                "request": request, "user": u, "plan": f"Invoice {inv['number']}", "amount": amount_paise,
+                "order_id": order["id"], "key_id": kid, "simulated": False, "invoice_id": inv["id"]
+            })
+        except Exception as e:
+            print("[RZP-INV-ERR]", e)
+            return RedirectResponse(f"/invoices/{iid}", status_code=303)
+    else:
+        # Stripe: currency from client currency (lowercased ISO), zero-decimal handling
+        curr_lower = curr.lower()
+        if curr_lower in pdfgen.ZERO_DECIMAL_CURRENCIES:
+            unit_amount = int(round(amount))
+        else:
+            unit_amount = int(round(amount * 100))
+
+        stripe_key = os.environ.get("STRIPE_SECRET_KEY")
+        if not stripe_key:
+            print(f"[STRIPE-SKIP] simulated pay invoice {inv['number']} {curr_lower} {unit_amount}")
+            db.mark_invoice_paid(iid, u["id"])
+            return RedirectResponse(f"/invoices/{iid}?paid=1", status_code=303)
+        try:
+            import stripe
+            stripe.api_key = stripe_key
+            session = stripe.checkout.Session.create(
+                customer_email=client["email"] or u["email"],
+                line_items=[{
+                    "price_data": {
+                        "currency": curr_lower,
+                        "unit_amount": unit_amount,
+                        "product_data": {"name": f"Invoice {inv['number']}"},
+                    },
+                    "quantity": 1,
+                }],
+                mode="payment",
+                success_url=str(request.base_url) + f"invoices/{iid}?paid=1",
+                cancel_url=str(request.base_url) + f"invoices/{iid}?canceled=1",
+            )
+            return RedirectResponse(session.url, status_code=303)
+        except Exception as e:
+            print("[STRIPE-INV-ERR]", e)
+            return RedirectResponse(f"/invoices/{iid}", status_code=303)
 
 @app.post("/invoices/{iid}/send")
 def invoice_send(request: Request, iid: int):
@@ -861,7 +1104,7 @@ def invoice_send(request: Request, iid: int):
     pdf_path = inv["pdf_path"]
     if not pdf_path or not os.path.exists(pdf_path):
         entries = db.list_time_entries(u["id"], client_id=inv["client_id"], start=inv["period_start"], end=inv["period_end"])
-        pdf_path = pdfgen.generate_invoice_pdf(inv, client, entries, u["email"])
+        pdf_path = pdfgen.generate_invoice_pdf(inv, client, entries, u["email"], user=u)
         db.set_invoice_pdf(iid, pdf_path)
 
     # email via SMTP
@@ -871,8 +1114,21 @@ def invoice_send(request: Request, iid: int):
     smtp_pass = os.environ.get("SMTP_PASS")
     smtp_from = os.environ.get("SMTP_FROM") or smtp_user or u["email"]
 
-    subject = f"Invoice {inv['number']} from {u['email']}"
-    body = f"Hi {client['name']},\n\nPlease find attached invoice {inv['number']} for period {inv['period_start']} → {inv['period_end']}.\nAmount: {client['currency']} {float(inv['amount']):.2f}\n\nThanks,\n{u['email']}\n(via InvoiceSync)"
+    curr = client["currency"] or "USD"
+    amount_str = pdfgen.fmt_money(inv["amount"], curr)
+    due_val = (inv["due_date"] if "due_date" in inv.keys() else None) or ""
+    due_str = f"Due: {due_val[:10]}" if due_val else "Due: on receipt"
+    biz = (u["business_name"] if "business_name" in u.keys() else None) or u["email"]
+    subject = f"Invoice {inv['number']} from {biz}"
+    body = (
+        f"Hi {client['name']},\n\n"
+        f"Please find attached invoice {inv['number']} for period {inv['period_start']} → {inv['period_end']}.\n"
+        f"Amount: {amount_str}\n"
+        f"{due_str}\n\n"
+        f"Thanks,\n{biz}\n(via InvoiceSync)"
+    )
+    if (inv["notes"] if "notes" in inv.keys() else None):
+        body += f"\n\nNotes / Payment Terms:\n{inv['notes']}"
     if client["custom_fields_json"]:
         body += f"\n\nCustom fields: {client['custom_fields_json']}"
 

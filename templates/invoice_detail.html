@@ -7,34 +7,142 @@
     Back to dashboard
   </a>
 
-  <div class="mt-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-    <div class="flex items-center gap-4">
-      <div class="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-mono font-bold shadow-soft">{{ invoice.number.split('-')[-1] }}</div>
-      <div>
-        <h1 class="text-[28px] font-extrabold tracking-tight leading-none font-mono">{{ invoice.number }}
-          <span class="align-middle ml-2 inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase px-3 py-1.5 rounded-full border {% if invoice.status=='sent' %}bg-emerald-50 text-emerald-700 border-emerald-200{% else %}bg-amber-50 text-amber-800 border-amber-200{% endif %}">
-            <span class="w-1.5 h-1.5 rounded-full {% if invoice.status=='sent' %}bg-emerald-500{% else %}bg-amber-500{% endif %}"></span> {{ invoice.status }}
-          </span>
-        </h1>
-        <div class="text-sm text-slate-600 mt-1">{{ invoice.period_start }} → {{ invoice.period_end }} • Created {{ invoice.created_at[:10] }} • <span class="font-mono text-xs bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">{{ invoice.period_start }} to {{ invoice.period_end }}</span></div>
+  <!-- Mobile-first above the fold summary & key actions -->
+  <div class="mt-4 bg-white rounded-[24px] border border-slate-200 shadow-soft p-5 sm:p-7">
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-100">
+      <div class="flex items-center gap-3.5">
+        <div class="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center font-mono font-bold text-sm shadow-soft flex-shrink-0">
+          {{ invoice.number.split('-')[-1] }}
+        </div>
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="text-2xl sm:text-[28px] font-extrabold tracking-tight font-mono leading-none">{{ invoice.number }}</h1>
+            <span class="inline-flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase px-3 py-1 rounded-full border {% if invoice.paid %}bg-emerald-50 text-emerald-700 border-emerald-200{% elif invoice.status=='sent' %}bg-blue-50 text-blue-700 border-blue-200{% else %}bg-amber-50 text-amber-800 border-amber-200{% endif %}">
+              <span class="w-1.5 h-1.5 rounded-full {% if invoice.paid or invoice.status=='sent' %}bg-emerald-500{% else %}bg-amber-500{% endif %}"></span>
+              {% if invoice.paid %}Paid{% else %}{{ invoice.status }}{% endif %}
+            </span>
+          </div>
+          <div class="text-xs sm:text-sm text-slate-500 mt-1.5">
+            {{ invoice.period_start }} → {{ invoice.period_end }} • Created {{ invoice.created_at[:10] }}
+            {% if invoice.terms %}• <span class="font-medium text-slate-700">{{ invoice.terms }}</span>{% endif %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Key Action: Download PDF -->
+      <div class="flex items-center gap-2">
+        <a href="/invoices/{{ invoice.id }}/pdf" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-card hover:bg-black hover:-translate-y-px transition">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Download PDF
+        </a>
       </div>
     </div>
-    <div class="flex items-center gap-2">
-      <a href="/invoices/{{ invoice.id }}/pdf" class="inline-flex items-center gap-2 bg-slate-900 text-white px-5 py-3 rounded-full text-sm font-semibold shadow-card hover:bg-black hover:-translate-y-px transition">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        Download PDF
-      </a>
-      <span class="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium bg-white border border-slate-200 px-3 py-2 rounded-full">ReportLab</span>
+
+    <!-- Above the fold: Big Amount in Client Currency first + Home-currency approx second + Pay button -->
+    <div class="mt-5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50 border border-slate-200/80 rounded-2xl p-4 sm:p-5">
+      <div>
+        <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Invoice Amount</div>
+        <!-- Big amount in client currency first -->
+        <div class="mt-1 text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight font-mono">
+          {{ fmt_money(invoice.amount, client.currency) }}
+        </div>
+        <!-- Home-currency approx second (static rate note, no fake precision) -->
+        {% if not is_inr %}
+        <div class="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
+          ≈ {{ fmt_money(approx_inr, 'INR') }} <span class="text-slate-400">({{ static_rate_note }})</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Pay button & payment badge above the fold -->
+      <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+        {% if invoice.paid %}
+          <div class="inline-flex items-center gap-2 bg-emerald-100 text-emerald-800 px-4 py-2.5 rounded-xl font-bold text-sm">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Invoice Paid
+          </div>
+        {% else %}
+          {% if is_inr %}
+            <!-- Razorpay / UPI only for INR -->
+            <form method="post" action="/invoices/{{ invoice.id }}/pay">
+              <button type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-emerald-600 text-white px-5 py-3 rounded-xl font-semibold shadow-soft hover:bg-emerald-700 hover:-translate-y-px transition">
+                <span>Pay ₹ via Razorpay</span>
+                <span class="bg-emerald-800 text-emerald-100 text-[10px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider">UPI</span>
+              </button>
+            </form>
+            {% if user.upi_id %}
+            <div class="text-xs text-slate-600 self-center">
+              Direct UPI: <span class="font-mono font-bold text-slate-800 bg-white border border-slate-200 px-2 py-1 rounded-lg">{{ user.upi_id }}</span>
+            </div>
+            {% endif %}
+          {% else %}
+            <!-- Stripe for USD/EUR/GBP/etc (hide UPI badges) -->
+            <form method="post" action="/invoices/{{ invoice.id }}/pay">
+              <button type="submit" class="w-full inline-flex items-center justify-center gap-2 bg-brand-600 text-white px-5 py-3 rounded-xl font-semibold shadow-soft hover:bg-brand-700 hover:-translate-y-px transition">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                <span>Pay via Card / Stripe ({{ client.currency }})</span>
+              </button>
+            </form>
+            {% if user.payment_link %}
+            <a href="{{ user.payment_link }}" target="_blank" class="text-xs font-semibold text-brand-600 hover:text-brand-800 underline self-center">
+              Direct Payment Link →
+            </a>
+            {% endif %}
+          {% endif %}
+        {% endif %}
+      </div>
     </div>
   </div>
 
+  <!-- Contextual Business Profile Prompt (only at first real PDF) -->
+  {% if needs_business_profile %}
+  <div class="mt-6 bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-200 rounded-[24px] p-5 sm:p-6 shadow-soft">
+    <div class="flex items-start gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-200 text-amber-900 flex items-center justify-center font-bold text-lg flex-shrink-0">💼</div>
+      <div>
+        <h3 class="font-bold text-amber-950 text-base">Setup Business Profile for your PDF</h3>
+        <p class="text-xs text-amber-800/90 mt-0.5">Please add your business name and address to print on this and future invoice PDFs. Prefilled from your signup.</p>
+      </div>
+    </div>
+
+    <form method="post" action="/business-profile" class="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+      <input type="hidden" name="next_url" value="/invoices/{{ invoice.id }}">
+      <div class="sm:col-span-1">
+        <label class="text-[11px] font-semibold uppercase text-amber-900">Your / Business Name *</label>
+        <input name="business_name" value="{{ user.business_name or user.email.split('@')[0].title() }}" required placeholder="e.g. Apex Consulting Studio" class="mt-1 w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-200 outline-none">
+      </div>
+      <div class="sm:col-span-1">
+        <label class="text-[11px] font-semibold uppercase text-amber-900">Street Address</label>
+        <input name="business_address" value="{{ user.business_address or '' }}" placeholder="e.g. 42 Innovation Way" class="mt-1 w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-200 outline-none">
+      </div>
+      <div>
+        <label class="text-[11px] font-semibold uppercase text-amber-900">City</label>
+        <input name="business_city" value="{{ user.business_city or '' }}" placeholder="e.g. Bengaluru / Berlin" class="mt-1 w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-200 outline-none">
+      </div>
+      <div>
+        <label class="text-[11px] font-semibold uppercase text-amber-900">Country</label>
+        <input name="business_country" value="{{ user.business_country or 'India' }}" placeholder="e.g. India / United States" class="mt-1 w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-amber-200 outline-none">
+      </div>
+      <div class="sm:col-span-2">
+        <label class="text-[11px] font-semibold uppercase text-amber-900">Tax ID / GSTIN / VAT <span class="normal-case font-normal text-amber-800/80">(Optional hint: India: only if GST-registered; EU: VAT needed for valid invoice)</span></label>
+        <input name="business_tax_id" value="{{ user.business_tax_id or '' }}" placeholder="e.g. 29ABCDE1234F1Z5 or DE123456789" class="mt-1 w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-sm font-mono focus:ring-2 focus:ring-amber-200 outline-none">
+      </div>
+      <div class="sm:col-span-2 flex justify-end">
+        <button type="submit" class="w-full sm:w-auto bg-amber-900 text-white font-semibold text-xs px-5 py-2.5 rounded-xl hover:bg-amber-950 transition">
+          Save business profile & update PDF
+        </button>
+      </div>
+    </form>
+  </div>
+  {% endif %}
+
   {% if error %}<div class="mt-6 bg-red-50 border border-red-200 text-red-800 rounded-2xl px-4 py-3 text-sm flex gap-3"><span class="w-7 h-7 rounded-full bg-red-100 border border-red-200 flex items-center justify-center font-bold flex-shrink-0">!</span><div class="flex-1 font-medium">{{ error }}</div></div>{% endif %}
 
-  <div class="mt-8 grid lg:grid-cols-[0.95fr_1.05fr] gap-6">
+  <div class="mt-6 grid lg:grid-cols-[0.95fr_1.05fr] gap-6">
     <!-- Details -->
     <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft overflow-hidden">
       <div class="h-1.5 bg-gradient-to-r from-brand-600 to-violet-600"></div>
-      <div class="p-6 sm:p-7">
+      <div class="p-5 sm:p-7">
         <h2 class="font-bold tracking-tight flex items-center gap-2">
           <span class="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
@@ -46,21 +154,28 @@
           <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-brand-600 to-violet-600 text-white flex items-center justify-center font-extrabold flex-shrink-0">{{ client.name[0]|upper }}</div>
           <div class="min-w-0 flex-1">
             <div class="font-semibold">{{ client.name }}</div>
-            <div class="text-sm text-slate-600">{{ client.email or 'No email' }}</div>
-            <div class="mt-2 inline-flex items-center gap-2 text-xs font-medium bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full">{{ client.currency }} • {{ "%.2f"|format(client.rate) }}/h</div>
+            <div class="text-sm text-slate-600 truncate">{{ client.email or 'No email' }}</div>
+            <div class="mt-2 inline-flex items-center gap-2 text-xs font-medium bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full">{{ client.currency }} • {{ fmt_money(client.rate, client.currency) }}/h</div>
           </div>
         </div>
 
-        <div class="mt-6 grid grid-cols-2 gap-3 text-sm">
+        <div class="mt-5 grid grid-cols-2 gap-3 text-sm">
           <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3">
             <div class="text-xs font-semibold tracking-wide uppercase text-slate-500">Period</div>
-            <div class="mt-1 font-medium">{{ invoice.period_start }} → {{ invoice.period_end }}</div>
+            <div class="mt-1 font-medium text-xs sm:text-sm">{{ invoice.period_start }} → {{ invoice.period_end }}</div>
           </div>
           <div class="bg-slate-900 text-white rounded-2xl p-3">
             <div class="text-xs font-semibold tracking-wide uppercase text-white/60">Amount</div>
-            <div class="mt-1 text-lg font-extrabold">{{ client.currency }} {{ "%.2f"|format(invoice.amount) }}</div>
+            <div class="mt-1 text-sm sm:text-base font-extrabold">{{ fmt_money(invoice.amount, client.currency) }}</div>
           </div>
         </div>
+
+        {% if invoice.notes %}
+        <div class="mt-4 bg-blue-50/60 border border-blue-200 rounded-2xl p-3 text-xs">
+          <div class="font-semibold uppercase tracking-wider text-blue-900">Customer Notes (on PDF)</div>
+          <div class="mt-1 text-slate-700 whitespace-pre-line">{{ invoice.notes }}</div>
+        </div>
+        {% endif %}
 
         {% if client.custom_fields_json %}
         <div class="mt-4 bg-amber-50 border border-amber-200 rounded-2xl p-3 min-w-0">
@@ -80,7 +195,7 @@
         </div>
         {% endif %}
 
-        <div class="mt-6">
+        <div class="mt-5">
           <div class="text-xs font-semibold tracking-wide uppercase text-slate-500">Email this invoice</div>
           <form method="post" action="/invoices/{{ invoice.id }}/send" class="mt-2" hx-post="/invoices/{{ invoice.id }}/send" hx-target="#send-result" hx-swap="innerHTML">
             <button class="w-full bg-brand-600 text-white rounded-xl py-3 text-sm font-semibold hover:bg-brand-700 hover:-translate-y-px shadow-soft transition flex items-center justify-center gap-2">
@@ -89,31 +204,36 @@
             </button>
           </form>
           <div id="send-result" class="mt-3 text-sm"></div>
-          <div class="mt-3 flex items-center gap-2 text-xs text-slate-500">
-            <span class="w-1.5 h-1.5 rounded-full bg-slate-300"></span>
-            Without SMTP_* we still mark <span class="font-medium text-emerald-700">sent</span> and log with <span class="font-mono bg-slate-100 px-1 py-0.5 rounded">print()</span>
-          </div>
         </div>
 
-        <div class="mt-6">
-          <div class="text-xs font-semibold tracking-wide uppercase text-slate-500">Overdue chase</div>
-          <div class="mt-2 text-sm text-slate-600">Due: {{ invoice.due_date or 'not set' }}{% if days_overdue and days_overdue > 0 %} • <span class="font-semibold text-red-700">{{ days_overdue }}d overdue</span>{% endif %}{% if invoice.paid %} • <span class="font-semibold text-emerald-700">paid — reminders stopped</span>{% endif %}</div>
-          <div class="mt-1 text-xs text-slate-500">Auto-nudges at {{ cadence|join('/') }} days overdue via Telegram (or logs).</div>
-          <div class="mt-2 flex gap-2">
-            <button hx-post="/invoices/{{ invoice.id }}/paid" hx-target="#chase-result" hx-swap="innerHTML" class="flex-1 bg-emerald-600 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-emerald-700 transition">Mark paid — stops reminders</button>
-            <button hx-post="/invoices/{{ invoice.id }}/chase-pause" hx-target="#chase-result" hx-swap="innerHTML" class="flex-1 bg-white border border-slate-200 rounded-xl py-2.5 text-sm font-semibold hover:bg-slate-900 hover:text-white transition">{% if invoice.chase_paused %}Resume chase{% else %}Pause chase{% endif %}</button>
+        <!-- Collapsible Overdue Chase Card (usable at 360px) -->
+        <details class="mt-5 bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden group">
+          <summary class="cursor-pointer font-semibold p-4 flex items-center justify-between text-xs sm:text-sm text-slate-700 select-none hover:bg-slate-100/70 transition">
+            <span class="flex items-center gap-2">
+              <span class="w-2 h-2 rounded-full {% if invoice.paid %}bg-emerald-500{% elif days_overdue and days_overdue > 0 %}bg-red-500{% else %}bg-amber-500{% endif %}"></span>
+              Overdue Chase Status
+            </span>
+            <span class="text-xs text-slate-400 group-open:rotate-180 transition-transform">▼</span>
+          </summary>
+          <div class="p-4 pt-0 text-sm">
+            <div class="text-xs text-slate-600">
+              Due: {{ invoice.due_date or 'not set' }}
+              {% if days_overdue and days_overdue > 0 %} • <span class="font-semibold text-red-700">{{ days_overdue }}d overdue</span>{% endif %}
+              {% if invoice.paid %} • <span class="font-semibold text-emerald-700">paid — reminders stopped</span>{% endif %}
+            </div>
+            <div class="mt-1 text-[11px] text-slate-500">Auto-nudges at {{ cadence|join('/') }} days overdue via Telegram / logs.</div>
+            <div class="mt-3 flex flex-col sm:flex-row gap-2">
+              <button hx-post="/invoices/{{ invoice.id }}/paid" hx-target="#chase-result" hx-swap="innerHTML" class="flex-1 bg-emerald-600 text-white rounded-xl py-2 text-xs font-semibold hover:bg-emerald-700 transition">Mark paid</button>
+              <button hx-post="/invoices/{{ invoice.id }}/chase-pause" hx-target="#chase-result" hx-swap="innerHTML" class="flex-1 bg-white border border-slate-200 rounded-xl py-2 text-xs font-semibold hover:bg-slate-900 hover:text-white transition">{% if invoice.chase_paused %}Resume chase{% else %}Pause chase{% endif %}</button>
+            </div>
+            <div id="chase-result" class="mt-2 text-xs"></div>
           </div>
-          <div id="chase-result" class="mt-3 text-sm"></div>
-        </div>
-
-        <div class="mt-6 flex items-center gap-2 text-xs text-slate-500">
-          <span class="w-2 h-2 rounded-full bg-slate-900"></span> PDF at <span class="font-mono bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-full">{{ invoice.pdf_path or 'pdfs/'+invoice.number+'.pdf' }}</span>
-        </div>
+        </details>
       </div>
     </div>
 
     <!-- Line items -->
-    <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-6 sm:p-7">
+    <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-5 sm:p-7">
       <div class="flex items-center justify-between">
         <h2 class="font-bold tracking-tight flex items-center gap-2">
           <span class="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 text-blue-600 flex items-center justify-center">
@@ -126,37 +246,38 @@
 
       {% if entries %}
       <div class="mt-5 border border-slate-200 rounded-2xl overflow-hidden">
-        <div class="grid grid-cols-[1.1fr_0.7fr_0.6fr] gap-2 bg-slate-50 border-b border-slate-200 px-4 py-2.5 text-xs font-semibold tracking-wide uppercase text-slate-500">
-          <span>Description • date</span><span class="text-right">Hours</span><span class="text-right">Value</span>
-        </div>
-        <div class="divide-y divide-slate-100 max-h-[380px] overflow-auto">
-          {% for e in entries %}
-          <div class="grid grid-cols-[1.1fr_0.7fr_0.6fr] gap-2 px-4 py-3 text-sm items-center hover:bg-slate-50/70 transition">
-            <div class="min-w-0">
-              <div class="font-medium truncate">{{ e.description }}</div>
-              <div class="text-xs text-slate-500 font-mono">{{ e.date }} • {{ e.source }}</div>
+        <div class="overflow-x-auto">
+          <div class="min-w-[320px]">
+            <div class="grid grid-cols-[1.1fr_0.7fr_0.6fr] gap-2 bg-slate-50 border-b border-slate-200 px-4 py-2.5 text-xs font-semibold tracking-wide uppercase text-slate-500">
+              <span>Description</span><span class="text-right">Hours</span><span class="text-right">Value</span>
             </div>
-            <div class="text-right font-mono font-semibold">{{ "%.2f"|format(e.seconds/3600) }}h</div>
-            <div class="text-right font-mono text-slate-600">{{ client.currency }} {{ "%.2f"|format(e.seconds/3600 * (client.rate or 0)) }}</div>
+            <div class="divide-y divide-slate-100 max-h-[380px] overflow-auto">
+              {% for e in entries %}
+              <div class="grid grid-cols-[1.1fr_0.7fr_0.6fr] gap-2 px-4 py-3 text-sm items-center hover:bg-slate-50/70 transition">
+                <div class="min-w-0">
+                  <div class="font-medium truncate text-xs sm:text-sm">{{ e.description }}</div>
+                  <div class="text-[11px] text-slate-500 font-mono">{{ e.date }} • {{ e.source }}</div>
+                </div>
+                <div class="text-right font-mono font-semibold text-xs sm:text-sm">{{ "%.2f"|format(e.seconds/3600) }}h</div>
+                <div class="text-right font-mono text-slate-600 text-xs sm:text-sm">{{ fmt_money(e.seconds/3600 * (client.rate or 0), client.currency) }}</div>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
+              <span class="text-xs sm:text-sm font-semibold">Total</span>
+              <span class="font-mono font-extrabold text-xs sm:text-sm">{{ "%.2f"|format(entries|sum(attribute='seconds')/3600) }}h • {{ fmt_money(invoice.amount, client.currency) }}</span>
+            </div>
           </div>
-          {% endfor %}
         </div>
-        <div class="bg-slate-900 text-white px-4 py-3 flex items-center justify-between">
-          <span class="text-sm font-semibold">Total • {{ entries|length }} lines</span>
-          <span class="font-mono font-extrabold">{{ "%.2f"|format(entries|sum(attribute='seconds')/3600) }}h • {{ client.currency }} {{ "%.2f"|format(invoice.amount) }}</span>
-        </div>
-      </div>
-      <div class="mt-4 flex items-center gap-2 text-xs text-slate-500">
-        <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Hours × rate = total. Fixed line items supported via custom fields.
       </div>
       {% else %}
-      <div class="mt-6 border-2 border-dashed border-slate-200 rounded-2xl py-12 px-6 text-center bg-slate-50/50">
+      <div class="mt-6 border-2 border-dashed border-slate-200 rounded-2xl py-10 px-4 text-center bg-slate-50/50">
         <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 mx-auto flex items-center justify-center text-slate-400">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><line x1="16" y1="13" x2="8" y2="13"/></svg>
         </div>
-        <div class="mt-3 font-semibold">No time entries in this period</div>
-        <div class="mt-1 text-sm text-slate-500">Fixed-amount invoice — amount shown as entered. Add hours and regenerate if needed.</div>
-        <div class="mt-4 inline-flex items-center gap-2 text-xs font-medium bg-white border border-slate-200 px-3 py-2 rounded-full">{{ client.currency }} {{ "%.2f"|format(invoice.amount) }} total</div>
+        <div class="mt-3 font-semibold text-sm">Fixed-amount invoice</div>
+        <div class="mt-1 text-xs text-slate-500">No time entries logged for this period. Total shown as configured.</div>
+        <div class="mt-3 inline-flex items-center gap-2 text-xs font-medium bg-white border border-slate-200 px-3 py-1.5 rounded-full">{{ fmt_money(invoice.amount, client.currency) }}</div>
       </div>
       {% endif %}
     </div>

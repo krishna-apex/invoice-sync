@@ -126,6 +126,35 @@ def init_db():
         conn.close()
     except Exception:
         pass
+    # migrate: user business profile, timezone, upi, payment_link, branding prompt
+    for _col in (
+        "business_name TEXT",
+        "business_address TEXT",
+        "business_city TEXT",
+        "business_country TEXT",
+        "business_tax_id TEXT",
+        "logo_path TEXT",
+        "timezone TEXT DEFAULT 'Asia/Kolkata'",
+        "upi_id TEXT",
+        "payment_link TEXT",
+        "dismissed_branding_prompt INTEGER DEFAULT 0",
+    ):
+        try:
+            conn = get_conn()
+            conn.execute(f"ALTER TABLE users ADD COLUMN {_col}")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+    # migrate: terms and notes on invoices
+    for _col in ("terms TEXT DEFAULT 'Due on receipt'", "notes TEXT"):
+        try:
+            conn = get_conn()
+            conn.execute(f"ALTER TABLE invoices ADD COLUMN {_col}")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
     print("[DB] initialized at", DB_PATH)
 
 # ---------- auth ----------
@@ -212,6 +241,54 @@ def set_api_token(user_id: int, token: str):
     conn.execute("UPDATE users SET api_token=? WHERE id=?", (token, user_id))
     conn.commit()
     conn.close()
+
+def update_business_profile(user_id: int, business_name: str, business_address: str, business_city: str, business_country: str, business_tax_id: str, logo_path: str = None):
+    conn = get_conn()
+    if logo_path is not None:
+        conn.execute(
+            "UPDATE users SET business_name=?, business_address=?, business_city=?, business_country=?, business_tax_id=?, logo_path=? WHERE id=?",
+            (business_name, business_address, business_city, business_country, business_tax_id, logo_path, user_id)
+        )
+    else:
+        conn.execute(
+            "UPDATE users SET business_name=?, business_address=?, business_city=?, business_country=?, business_tax_id=? WHERE id=?",
+            (business_name, business_address, business_city, business_country, business_tax_id, user_id)
+        )
+    conn.commit()
+    conn.close()
+    print(f"[PROFILE] updated business profile user={user_id}")
+
+def update_user_settings(user_id: int, timezone: str = None, upi_id: str = None, payment_link: str = None, business_name: str = None, business_address: str = None, business_city: str = None, business_country: str = None, business_tax_id: str = None, logo_path: str = None):
+    conn = get_conn()
+    u = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    if not u:
+        conn.close()
+        return
+    u_dict = dict(u)
+    tz = timezone if timezone is not None else u_dict.get("timezone", "Asia/Kolkata")
+    upi = upi_id if upi_id is not None else u_dict.get("upi_id", "")
+    plink = payment_link if payment_link is not None else u_dict.get("payment_link", "")
+    bname = business_name if business_name is not None else u_dict.get("business_name", "")
+    baddr = business_address if business_address is not None else u_dict.get("business_address", "")
+    bcity = business_city if business_city is not None else u_dict.get("business_city", "")
+    bcountry = business_country if business_country is not None else u_dict.get("business_country", "")
+    btax = business_tax_id if business_tax_id is not None else u_dict.get("business_tax_id", "")
+    logo = logo_path if logo_path is not None else u_dict.get("logo_path", "")
+    conn.execute(
+        "UPDATE users SET timezone=?, upi_id=?, payment_link=?, business_name=?, business_address=?, business_city=?, business_country=?, business_tax_id=?, logo_path=? WHERE id=?",
+        (tz, upi, plink, bname, baddr, bcity, bcountry, btax, logo, user_id)
+    )
+    conn.commit()
+    conn.close()
+    print(f"[SETTINGS] updated settings user={user_id}")
+
+def dismiss_branding_prompt(user_id: int):
+    conn = get_conn()
+    conn.execute("UPDATE users SET dismissed_branding_prompt=1 WHERE id=?", (user_id,))
+    conn.commit()
+    conn.close()
+    print(f"[ONBOARDING] dismissed branding prompt user={user_id}")
+
 
 # ---------- clients ----------
 def add_client(user_id, name, email, currency, rate, custom_fields_json, tax_percent=0):
@@ -324,7 +401,7 @@ def next_invoice_number(user_id):
     n = row["c"] + 1
     return f"INV-{n:04d}"
 
-def create_invoice(user_id, client_id, period_start, period_end, amount, status="draft", pdf_path=None):
+def create_invoice(user_id, client_id, period_start, period_end, amount, status="draft", pdf_path=None, terms="Due on receipt", notes="", due_date=None):
     number = next_invoice_number(user_id)
     now = datetime.now(timezone.utc).isoformat()
     conn = get_conn()
@@ -333,8 +410,8 @@ def create_invoice(user_id, client_id, period_start, period_end, amount, status=
     for _ in range(3):
         try:
             cur.execute(
-                "INSERT INTO invoices (user_id, client_id, number, period_start, period_end, amount, status, pdf_path, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (user_id, client_id, number, period_start, period_end, float(amount), status, pdf_path, now),
+                "INSERT INTO invoices (user_id, client_id, number, period_start, period_end, amount, status, pdf_path, terms, notes, due_date, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (user_id, client_id, number, period_start, period_end, float(amount), status, pdf_path, terms or "Due on receipt", notes or "", due_date, now),
             )
             iid = cur.lastrowid
             conn.commit()
@@ -347,6 +424,17 @@ def create_invoice(user_id, client_id, period_start, period_end, amount, status=
             number = f"INV-{n:04d}"
     conn.close()
     raise Exception("could not create invoice number")
+
+def update_invoice_notes_and_terms(iid, user_id, terms=None, notes=None):
+    conn = get_conn()
+    if terms is not None and notes is not None:
+        conn.execute("UPDATE invoices SET terms=?, notes=? WHERE id=? AND user_id=?", (terms, notes, iid, user_id))
+    elif terms is not None:
+        conn.execute("UPDATE invoices SET terms=? WHERE id=? AND user_id=?", (terms, iid, user_id))
+    elif notes is not None:
+        conn.execute("UPDATE invoices SET notes=? WHERE id=? AND user_id=?", (notes, iid, user_id))
+    conn.commit()
+    conn.close()
 
 def list_invoices(user_id, limit=20):
     conn = get_conn()

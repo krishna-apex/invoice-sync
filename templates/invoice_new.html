@@ -61,6 +61,21 @@
           </div>
         </div>
 
+        <div>
+          <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Payment terms</label>
+          <select name="terms" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+            <option value="Due on receipt" selected>Due on receipt</option>
+            <option value="Net 14">Net 14 (14 days)</option>
+            <option value="Net 30">Net 30 (30 days)</option>
+          </select>
+          <p class="mt-1 text-[11px] text-slate-500">Overrides CHASE_NET_DAYS default for this invoice.</p>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Customer notes <span class="normal-case font-normal text-slate-500">— prints on PDF above totals</span></label>
+          <textarea name="notes" rows="2" placeholder="e.g. Payment due within terms. Bank transfer / UPI details or special notes..." class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition"></textarea>
+        </div>
+
         <label class="flex items-start gap-3 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 hover:bg-white hover:border-slate-300 transition cursor-pointer">
           <input type="checkbox" name="recurring" class="mt-0.5 w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500">
           <div class="flex-1">

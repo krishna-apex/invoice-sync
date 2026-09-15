@@ -39,14 +39,19 @@
     </div>
     <div>
       <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Currency</label>
-      <select name="currency" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
-        <option value="USD" selected>USD — US Dollar</option>
-        <option value="EUR">EUR — Euro</option>
-        <option value="GBP">GBP — Pound</option>
-        <option value="INR">INR — Rupee</option>
-        <option value="CAD">CAD</option>
-        <option value="AUD">AUD</option>
-      </select>
+      <div class="mt-1.5 relative">
+        <input list="currency-options" name="currency" value="INR" placeholder="INR" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold uppercase focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+        <datalist id="currency-options">
+          <option value="INR">INR — Indian Rupee (Default)</option>
+          <option value="USD">USD — US Dollar</option>
+          <option value="EUR">EUR — Euro</option>
+          <option value="GBP">GBP — British Pound</option>
+          <option value="CAD">CAD — Canadian Dollar</option>
+          <option value="AUD">AUD — Australian Dollar</option>
+          <option value="JPY">JPY — Japanese Yen</option>
+        </datalist>
+      </div>
+      <div class="mt-1 text-[11px] text-slate-500">Default INR (primary market). Or USD, EUR, GBP, or any ISO code.</div>
     </div>
     <div>
       <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Hourly rate</label>

@@ -10,8 +10,8 @@
         {% if user.plan=='pro' %}✨ Pro unlimited{% else %}Free • {{ count }}/{{ limit }} invoices{% endif %}
       </span>
     </div>
-    <h1 class="mt-2 text-[30px] font-[800] tracking-tight leading-none">Good {% if count>0 %}evening{% else %}morning{% endif %}, {{ user.email.split('@')[0] }} <span class="align-middle">👋</span></h1>
-    <p class="mt-2 text-sm text-slate-600 max-w-xl">Here’s what’s happening with your freelance invoicing today. Import time, generate a branded PDF, and email it — all without leaving this page.</p>
+    <h1 class="mt-2 text-[26px] sm:text-[30px] font-[800] tracking-tight leading-none">Good {% if count>0 %}evening{% else %}morning{% endif %}, {{ user.email.split('@')[0] }} <span class="align-middle">👋</span></h1>
+    <p class="mt-2 text-sm text-slate-600 max-w-xl">Freelance invoicing that matches your tracked hours. Global-ready with per-client currency.</p>
   </div>
 
   <div class="bg-white rounded-[20px] border border-slate-200 shadow-soft p-4 min-w-[280px]">
@@ -49,13 +49,80 @@
 </div>
 {% endif %}
 
+<!-- Skippable "Make invoices look professional" Prompt (shown after first invoice, dismissible forever) -->
+{% if show_branding_prompt %}
+<div id="branding-prompt-banner" class="mt-6 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-[20px] p-4 sm:p-5 shadow-soft">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+    <div class="flex items-start gap-3">
+      <div class="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center font-bold text-base flex-shrink-0">✨</div>
+      <div>
+        <h3 class="text-sm font-bold text-slate-900">Make your invoices look professional</h3>
+        <p class="text-xs text-slate-600 mt-0.5">Add your business address and logo so clients recognize your invoices instantly.</p>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <a href="/settings" class="inline-flex items-center gap-1.5 text-xs font-semibold bg-brand-600 text-white px-4 py-2 rounded-full hover:bg-brand-700 transition">
+        Add logo & address
+      </a>
+      <button hx-post="/settings/dismiss-branding" hx-target="#branding-prompt-banner" hx-swap="outerHTML" class="text-xs font-medium text-slate-600 hover:text-slate-900 px-3 py-2 rounded-full border border-slate-300 bg-white hover:bg-slate-50 transition">
+        Dismiss forever
+      </button>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<!-- Non-blocking Getting Started Checklist -->
+<div class="mt-6 bg-white rounded-[24px] border border-slate-200 shadow-soft p-4 sm:p-6">
+  <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+    <div class="flex items-center gap-3">
+      <div class="w-8 h-8 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-xs">
+        {{ checklist_done }}/{{ checklist|length }}
+      </div>
+      <div>
+        <h2 class="font-bold tracking-tight text-sm sm:text-base">Getting Started Checklist</h2>
+        <p class="text-xs text-slate-500">Non-blocking — all features remain completely accessible</p>
+      </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
+      <span class="text-xs font-bold text-brand-600 bg-brand-50 border border-brand-200 px-2.5 py-1 rounded-full">
+        {{ (checklist_done / checklist|length * 100)|int }}% completed
+      </span>
+      <a href="/sample-invoice/pdf" target="_blank" class="text-xs font-medium text-slate-600 hover:text-slate-900 bg-slate-50 border border-slate-200 px-3 py-1 rounded-full flex items-center gap-1.5 hover:bg-slate-100 transition">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <span>Sample PDF</span>
+      </a>
+    </div>
+  </div>
+
+  <div class="mt-3 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+    <div class="h-full bg-gradient-to-r from-brand-600 to-emerald-500 rounded-full transition-all duration-300" style="width: {{ (checklist_done / checklist|length * 100)|int }}%"></div>
+  </div>
+
+  <div class="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+    {% for item in checklist %}
+    <a href="{{ item.link }}" class="flex items-center gap-3 p-3 rounded-2xl border transition {% if item.done %}bg-emerald-50/60 border-emerald-200 text-emerald-950 hover:bg-emerald-50{% else %}bg-slate-50/70 border-slate-200 text-slate-700 hover:bg-white hover:border-slate-300{% endif %}">
+      <div class="w-7 h-7 rounded-xl flex items-center justify-center text-xs font-bold flex-shrink-0 {% if item.done %}bg-emerald-600 text-white{% else %}bg-white border border-slate-300 text-slate-400{% endif %}">
+        {% if item.done %}✓{% else %}{{ loop.index }}{% endif %}
+      </div>
+      <div class="min-w-0 flex-1">
+        <div class="text-xs font-semibold truncate">{{ item.title }}</div>
+        <div class="text-[10px] text-slate-500">{% if item.done %}Completed ✓{% else %}Setup now →{% endif %}</div>
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+
 {% if overdue %}
-<div class="mt-6 bg-red-50 border border-red-200 rounded-[20px] p-5">
-  <div class="text-sm font-bold text-red-800">⚠ {{ overdue|length }} overdue — chase needed (nudges auto-send at 1/7/14/30d)</div>
+<div class="mt-6 bg-red-50 border border-red-200 rounded-[20px] p-4 sm:p-5">
+  <div class="text-sm font-bold text-red-800">⚠ {{ overdue|length }} overdue — chase active (auto-nudges at 1/7/14/30d)</div>
   <div class="mt-3 space-y-2">
     {% for o in overdue %}
-    <div class="flex items-center justify-between gap-3 bg-white border border-red-100 rounded-xl px-4 py-2.5 text-sm">
-      <div class="min-w-0"><span class="font-mono font-bold">{{ o.number }}</span> • {{ o.client_name }} • {{ o.client_currency }} {{ "%.2f"|format(o.amount) }} • <span class="font-semibold text-red-700">{{ o.days_overdue }}d overdue</span></div>
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white border border-red-100 rounded-xl px-4 py-2.5 text-sm">
+      <div class="min-w-0">
+        <span class="font-mono font-bold">{{ o.number }}</span> • {{ o.client_name }} • <span class="font-semibold">{{ fmt_money(o.amount, o.client_currency) }}</span> • <span class="font-semibold text-red-700">{{ o.days_overdue }}d overdue</span>
+      </div>
       <div class="flex gap-1.5 flex-shrink-0">
         <a href="/invoices/{{ o.id }}" class="text-xs font-semibold bg-white border border-slate-200 px-3 py-1.5 rounded-full hover:bg-slate-900 hover:text-white transition">View</a>
         <button hx-post="/invoices/{{ o.id }}/paid" hx-swap="none" class="text-xs font-semibold bg-emerald-600 text-white px-3 py-1.5 rounded-full hover:bg-emerald-700 transition">Paid</button>
@@ -66,8 +133,9 @@
 </div>
 {% endif %}
 
-<!-- KPI cards -->
-<div class="mt-8 grid grid-cols-2 lg:grid-cols-4 gap-4">
+<!-- KPI cards: Per-currency subtotals (NEVER SUM MIXED CURRENCIES) -->
+<div class="mt-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+  <!-- Revenue Month (per currency) -->
   <div class="bg-white rounded-[20px] border border-slate-200 p-5 shadow-soft hover:shadow-card transition">
     <div class="flex items-center justify-between">
       <div class="text-xs font-semibold tracking-wide uppercase text-slate-500">Revenue (month)</div>
@@ -75,11 +143,50 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 1v22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
       </div>
     </div>
-    <div class="mt-3 text-2xl font-extrabold tracking-tight">${{ "%.2f"|format(month_revenue) }}</div>
-    <div class="mt-1 text-xs text-slate-500">Total ${{ "%.2f"|format(total_revenue) }} all time • {{ count }} invoices</div>
-    <div class="mt-3 inline-flex items-center gap-1.5 text-xs font-medium bg-slate-50 border border-slate-200 px-2.5 py-1 rounded-full"><span class="w-2 h-2 rounded-full bg-emerald-500"></span> Stripe-ready</div>
+    <div class="mt-3">
+      {% if month_revenue_by_curr %}
+        <div class="space-y-1">
+          {% for cur, amt in month_revenue_by_curr.items() %}
+          <div class="text-lg sm:text-xl font-extrabold tracking-tight">{{ fmt_money(amt, cur) }}</div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="text-lg sm:text-xl font-extrabold tracking-tight text-slate-400">{{ fmt_money(0, 'INR') }}</div>
+      {% endif %}
+    </div>
+    <div class="mt-2 text-[11px] text-slate-500 truncate">
+      {% if total_revenue_by_curr %}
+        Total: {% for cur, amt in total_revenue_by_curr.items() %}{{ fmt_money(amt, cur) }}{% if not loop.last %}, {% endif %}{% endfor %}
+      {% else %}
+        No invoices this month
+      {% endif %}
+    </div>
   </div>
 
+  <!-- Outstanding Subtotals (per currency) -->
+  <div class="bg-white rounded-[20px] border border-slate-200 p-5 shadow-soft hover:shadow-card transition">
+    <div class="flex items-center justify-between">
+      <div class="text-xs font-semibold tracking-wide uppercase text-slate-500">Outstanding</div>
+      <div class="w-8 h-8 rounded-xl bg-amber-50 border border-amber-100 text-amber-600 flex items-center justify-center font-bold text-xs">
+        !
+      </div>
+    </div>
+    <div class="mt-3">
+      {% if outstanding_by_curr %}
+        <div class="space-y-1">
+          {% for cur, amt in outstanding_by_curr.items() %}
+          <div class="text-lg sm:text-xl font-extrabold tracking-tight text-amber-900">{{ fmt_money(amt, cur) }}</div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <div class="text-lg sm:text-xl font-extrabold tracking-tight text-emerald-600">{{ fmt_money(0, 'INR') }}</div>
+        <div class="text-[11px] text-emerald-600 mt-1">All invoices settled ✓</div>
+      {% endif %}
+    </div>
+    <div class="mt-2 text-[11px] text-slate-500">Per-currency • never mixed</div>
+  </div>
+
+  <!-- Hours tracked -->
   <div class="bg-white rounded-[20px] border border-slate-200 p-5 shadow-soft hover:shadow-card transition">
     <div class="flex items-center justify-between">
       <div class="text-xs font-semibold tracking-wide uppercase text-slate-500">Hours tracked</div>
@@ -88,10 +195,11 @@
       </div>
     </div>
     <div class="mt-3 text-2xl font-extrabold tracking-tight">{{ total_hours }}<span class="text-sm font-semibold text-slate-500">h</span></div>
-    <div class="mt-1 text-xs text-slate-500">{{ entries_count }} entries • avg {{ (total_hours / (entries_count or 1))|round(1) }}h</div>
-    <div class="mt-3 text-xs font-medium text-slate-600">Across {{ clients_count }} clients</div>
+    <div class="mt-1 text-xs text-slate-500">{{ entries_count }} entries • across {{ clients_count }} clients</div>
+    <div class="mt-2 text-[11px] font-medium text-slate-600">CSV & Toggl/Clockify API ready</div>
   </div>
 
+  <!-- Clients -->
   <div class="bg-white rounded-[20px] border border-slate-200 p-5 shadow-soft hover:shadow-card transition">
     <div class="flex items-center justify-between">
       <div class="text-xs font-semibold tracking-wide uppercase text-slate-500">Clients</div>
@@ -100,17 +208,9 @@
       </div>
     </div>
     <div class="mt-3 text-2xl font-extrabold tracking-tight">{{ clients_count }}</div>
-    <div class="mt-1 text-xs text-slate-500">Active relationships</div>
-    <a href="/clients" class="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-violet-700 hover:text-violet-800">Manage →</a>
-  </div>
-
-  <div class="bg-gradient-to-br from-slate-900 to-slate-800 rounded-[20px] p-5 text-white shadow-card relative overflow-hidden">
-    <div class="absolute -top-10 -right-10 w-32 h-32 bg-violet-600 rounded-full blur-2xl opacity-30"></div>
-    <div class="relative">
-      <div class="text-xs font-semibold tracking-wide uppercase text-white/60">Next step</div>
-      <div class="mt-3 text-sm font-semibold leading-snug">Import time → generate PDF → email.</div>
-      <div class="mt-1 text-xs text-white/60">Avg freelancer saves 73 minutes per month.</div>
-      <a href="/invoices/new" class="mt-4 inline-flex items-center gap-2 bg-white text-slate-900 rounded-full px-4 py-2 text-sm font-semibold hover:bg-slate-100 transition">Generate invoice <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></a>
+    <div class="mt-1 text-xs text-slate-500">Active roster</div>
+    <div class="mt-2">
+      <a href="/clients" class="inline-flex items-center gap-1 text-xs font-semibold text-violet-700 hover:text-violet-800">Manage clients →</a>
     </div>
   </div>
 </div>
@@ -118,11 +218,11 @@
 <!-- Main grid -->
 <div class="mt-8 grid lg:grid-cols-[1.15fr_0.85fr] gap-6">
   <!-- Clients -->
-  <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-5 sm:p-6">
+  <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-4 sm:p-6">
     <div class="flex items-center justify-between gap-4">
       <div>
         <h2 class="font-bold tracking-tight text-[15px]">Clients</h2>
-        <p class="text-xs text-slate-500">Your roster — rates & custom fields per client</p>
+        <p class="text-xs text-slate-500">Rates & custom fields per client</p>
       </div>
       <a href="/clients" class="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-900 text-white px-3 py-2 rounded-full hover:bg-black transition">Manage all <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg></a>
     </div>
@@ -135,11 +235,10 @@
           <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-600 to-violet-600 text-white flex items-center justify-center font-extrabold flex-shrink-0 shadow-soft">{{ c.name[0]|upper }}</div>
           <div class="min-w-0">
             <div class="text-sm font-semibold truncate">{{ c.name }} <span class="ml-1 inline-flex items-center gap-1 text-[11px] font-medium bg-white border border-slate-200 px-2 py-0.5 rounded-full">{{ c.currency }} • {{ "%.0f"|format(c.rate) }}/h</span></div>
-            <div class="text-xs text-slate-500 truncate">{{ c.email or 'No email' }} {% if c.custom_fields_json %}<span class="hidden sm:inline-flex ml-2 font-mono text-[11px] bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">{{ c.custom_fields_json[:48] }}{% if c.custom_fields_json|length>48 %}…{% endif %}</span>{% endif %}</div>
+            <div class="text-xs text-slate-500 truncate">{{ c.email or 'No email' }}</div>
           </div>
         </div>
         <div class="flex items-center gap-2 flex-shrink-0">
-          <span class="hidden sm:inline-flex text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-1 rounded-full">{{ c.currency }} {{ "%.2f"|format(c.rate) }}</span>
           <a href="/clients/{{ c.id }}" class="inline-flex items-center justify-center w-8 h-8 rounded-full bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 transition" title="Edit">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </a>
@@ -149,30 +248,37 @@
     </div>
     <a href="/clients" class="sm:hidden mt-4 inline-flex w-full justify-center bg-slate-900 text-white rounded-full py-2.5 text-sm font-semibold">Manage clients</a>
     {% else %}
-    <div class="mt-6 border-2 border-dashed border-slate-200 rounded-2xl py-10 px-6 text-center bg-slate-50/50">
+    <div class="mt-6 border-2 border-dashed border-slate-200 rounded-2xl py-8 px-4 text-center bg-slate-50/50">
       <div class="w-12 h-12 rounded-2xl bg-white border border-slate-200 shadow-soft mx-auto flex items-center justify-center text-slate-400">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
       </div>
-      <div class="mt-3 font-semibold">No clients yet</div>
-      <div class="mt-1 text-sm text-slate-500 max-w-sm mx-auto">Add your first client — different rates, currencies, PO numbers and tax IDs per client.</div>
-      <a href="/clients" class="mt-4 inline-flex bg-brand-600 text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:bg-brand-700 transition">Add client</a>
+      <div class="mt-3 font-semibold text-sm">No clients yet</div>
+      <div class="mt-1 text-xs text-slate-500 max-w-sm mx-auto">Add your first client below. Default currency is INR (India), with full support for USD, EUR, and GBP.</div>
     </div>
     {% endif %}
 
     <div class="mt-6 border-t border-slate-100 pt-5">
-      <div class="flex items-center gap-2 text-xs font-semibold tracking-wide uppercase text-slate-500"><span class="w-1.5 h-1.5 rounded-full bg-slate-900"></span> Quick add (HTMX)</div>
+      <div class="flex items-center gap-2 text-xs font-semibold tracking-wide uppercase text-slate-500"><span class="w-1.5 h-1.5 rounded-full bg-slate-900"></span> Quick add client</div>
       <form method="post" action="/clients" class="mt-3 grid gap-3">
-        <input name="name" placeholder="Client name * — e.g. Acme Corp" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
-        <div class="grid grid-cols-2 gap-3">
-          <input name="email" placeholder="client@email.com" type="email" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
-          <input name="currency" placeholder="USD" value="USD" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+        <input name="name" placeholder="Client name * — e.g. Acme Studio" required class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input name="email" placeholder="billing@client.com" type="email" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+          <div class="relative">
+            <input list="dash-currency-options" name="currency" placeholder="INR" value="INR" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-semibold uppercase focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+            <datalist id="dash-currency-options">
+              <option value="INR">INR — Indian Rupee (Default)</option>
+              <option value="USD">USD — US Dollar</option>
+              <option value="EUR">EUR — Euro</option>
+              <option value="GBP">GBP — British Pound</option>
+            </datalist>
+          </div>
         </div>
-        <div class="grid grid-cols-2 gap-3">
-          <input name="rate" placeholder="Hourly rate — 95" type="number" step="0.01" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
-          <input name="custom_fields" placeholder='PO: 8841, tax: 456' class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input name="rate" placeholder="Hourly rate — e.g. 2500" type="number" step="0.01" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+          <input name="custom_fields" placeholder='PO: 8841, GST: 29ABCDE1234F1Z5' class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
         </div>
         <button class="w-full bg-slate-900 text-white rounded-xl py-2.5 text-sm font-semibold hover:bg-black hover:-translate-y-px transition shadow-soft" hx-post="/clients" hx-target="#clients-list" hx-swap="outerHTML">
-          Add client — instantly appears above
+          Add client
         </button>
       </form>
       <div id="clients-list" class="hidden"></div>
@@ -181,11 +287,11 @@
 
   <!-- Invoices + Import -->
   <div class="space-y-6">
-    <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-5 sm:p-6">
+    <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-4 sm:p-6">
       <div class="flex items-center justify-between">
         <div>
           <h2 class="font-bold tracking-tight text-[15px]">Recent invoices</h2>
-          <p class="text-xs text-slate-500">Latest 20 • PDFs re-generated on demand</p>
+          <p class="text-xs text-slate-500">PDFs ready on demand</p>
         </div>
         <a href="/invoices/new" class="inline-flex items-center gap-1.5 bg-brand-600 text-white px-4 py-2 rounded-full text-sm font-semibold shadow-soft hover:bg-brand-700 hover:-translate-y-px transition">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
@@ -200,12 +306,12 @@
           <div class="min-w-0">
             <div class="flex items-center gap-2">
               <span class="font-mono font-bold text-sm tracking-tight">{{ inv.number }}</span>
-              <span class="inline-flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase px-2 py-1 rounded-full border {% if inv.status=='sent' %}bg-emerald-50 text-emerald-700 border-emerald-200{% else %}bg-amber-50 text-amber-800 border-amber-200{% endif %}">
+              <span class="inline-flex items-center gap-1 text-[11px] font-bold tracking-wide uppercase px-2 py-0.5 rounded-full border {% if inv.status=='sent' %}bg-emerald-50 text-emerald-700 border-emerald-200{% else %}bg-amber-50 text-amber-800 border-amber-200{% endif %}">
                 <span class="w-1.5 h-1.5 rounded-full {% if inv.status=='sent' %}bg-emerald-500{% else %}bg-amber-500{% endif %}"></span> {{ inv.status }}
               </span>
               <span class="hidden sm:inline text-xs text-slate-400">{{ inv.created_at[:10] }}</span>
             </div>
-            <div class="mt-1 text-xs text-slate-600 truncate">{{ inv.client_name }} • {{ inv.period_start }} → {{ inv.period_end }} • <span class="font-semibold">{{ inv.client_currency }} {{ "%.2f"|format(inv.amount) }}</span></div>
+            <div class="mt-1 text-xs text-slate-600 truncate">{{ inv.client_name }} • <span class="font-semibold text-slate-900">{{ fmt_money(inv.amount, inv.client_currency) }}</span></div>
           </div>
           <div class="flex items-center gap-1.5 flex-shrink-0">
             <a href="/invoices/{{ inv.id }}" class="inline-flex items-center gap-1 text-xs font-semibold bg-white border border-slate-200 px-3 py-1.5 rounded-full hover:bg-slate-900 hover:text-white hover:border-slate-900 transition">View</a>
@@ -217,17 +323,18 @@
         {% endfor %}
       </div>
       {% else %}
-      <div class="mt-5 border-2 border-dashed border-slate-200 rounded-2xl py-8 px-6 text-center bg-slate-50/50">
+      <div class="mt-5 border-2 border-dashed border-slate-200 rounded-2xl py-8 px-4 text-center bg-slate-50/50">
         <div class="w-10 h-10 rounded-xl bg-white border border-slate-200 mx-auto flex items-center justify-center text-slate-400">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
         </div>
         <div class="mt-3 text-sm font-semibold">No invoices yet</div>
-        <div class="text-xs text-slate-500">Import time, pick a date range, and generate your first branded PDF.</div>
+        <div class="text-xs text-slate-500">Pick a client, set dates, and generate your first PDF.</div>
       </div>
       {% endif %}
     </div>
 
-    <div class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-5 sm:p-6">
+    <!-- Time Import -->
+    <div id="import-time" class="bg-white rounded-[24px] border border-slate-200 shadow-soft p-4 sm:p-6">
       <div class="flex items-start justify-between gap-3">
         <div>
           <h3 class="font-bold tracking-tight text-[15px] flex items-center gap-2">
@@ -236,26 +343,25 @@
             </span>
             Import time entries
           </h3>
-          <p class="text-xs text-slate-500 mt-1">Toggl / Clockify token → API. Falls back to CSV instantly.</p>
+          <p class="text-xs text-slate-500 mt-1">Toggl / Clockify token or CSV paste.</p>
         </div>
-        <span class="hidden sm:inline-flex text-[11px] font-semibold tracking-wide uppercase bg-slate-900 text-white px-2.5 py-1 rounded-full">Auto-sync</span>
       </div>
 
       <form method="post" action="/import-time" class="mt-4 space-y-3" hx-post="/import-time" hx-target="#import-result" hx-swap="innerHTML">
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <select name="client_id" required class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
             <option value="">Pick client *</option>
-            {% for c in clients %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+            {% for c in clients %}<option value="{{ c.id }}">{{ c.name }} ({{ c.currency }})</option>{% endfor %}
           </select>
           <input name="token" placeholder="API token (optional)" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
         </div>
-        <div class="grid grid-cols-2 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input name="start_date" type="date" required class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
           <input name="end_date" type="date" required class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
         </div>
         <div class="relative">
-          <textarea name="csv_text" rows="3" placeholder="CSV fallback — description,seconds,date&#10;Design,7200,2026-08-01&#10;Dev,2.5h,2026-08-02&#10;Review,01:30:00,2026-08-03" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition"></textarea>
-          <div class="absolute bottom-2 right-2 text-[11px] font-medium bg-white border border-slate-200 px-2 py-1 rounded-full text-slate-500">CSV or time string</div>
+          <textarea name="csv_text" rows="3" placeholder="CSV fallback — description,seconds,date&#10;Design,7200,2026-08-01&#10;Dev,2.5h,2026-08-02" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-mono focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition"></textarea>
+          <div class="absolute bottom-2 right-2 text-[10px] font-medium bg-white border border-slate-200 px-2 py-0.5 rounded-full text-slate-500">CSV or time string</div>
         </div>
         <button class="w-full bg-white border border-slate-200 rounded-xl py-2.5 text-sm font-semibold hover:bg-slate-900 hover:text-white hover:border-slate-900 transition flex items-center justify-center gap-2">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -263,10 +369,6 @@
         </button>
       </form>
       <div id="import-result" class="mt-3 text-sm"></div>
-      <div class="mt-4 flex items-center justify-between gap-3">
-        <form method="post" action="/invoices/recurring/run"><button class="inline-flex items-center gap-1.5 text-xs font-semibold bg-slate-50 border border-slate-200 px-3 py-2 rounded-full hover:bg-white hover:border-slate-300 transition">⟳ Run recurring now</button></form>
-        <span class="text-xs text-slate-400">Auto every 60s • internal loop, no cron</span>
-      </div>
     </div>
   </div>
 </div>
