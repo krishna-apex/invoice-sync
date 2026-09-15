@@ -1,0 +1,6 @@
+__pycache__/
+*.db
+*.pyc
+.git/
+pdfs/*.pdf
+!pdfs/.gitkeep
