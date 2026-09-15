@@ -1267,7 +1267,7 @@ async def rzp_verify(request: Request):
             raise HTTPException(status_code=400, detail="unknown order")
         u = current_user(request)
         if not u:
-            raise HTTPException(status_code=303, headers={"location": "/login"})
+            return RedirectResponse("/login", status_code=303)
         uid = u["id"]
         plan = "monthly" if "monthly" in order_id else "annual"
         print(f"[RZP-SIM] user {uid} -> pro ({plan})")
