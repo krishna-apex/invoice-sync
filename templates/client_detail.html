@@ -31,16 +31,13 @@
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Currency</label>
-            <input list="edit-currency-options" name="currency" value="{{ client.currency }}" required class="mt-1.5 w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold uppercase focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
-            <datalist id="edit-currency-options">
-              <option value="INR">INR — Indian Rupee</option>
-              <option value="USD">USD — US Dollar</option>
-              <option value="EUR">EUR — Euro</option>
-              <option value="GBP">GBP — British Pound</option>
-              <option value="CAD">CAD — Canadian Dollar</option>
-              <option value="AUD">AUD — Australian Dollar</option>
-              <option value="JPY">JPY — Japanese Yen</option>
-            </datalist>
+            <select name="currency" class="mt-1.5 w-full bg-white border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+              {% for c in currencies %}
+              <option value="{{ c.code }}" {% if c.code == (client.currency or 'USD') %}selected{% endif %}>
+                {{ c.code }} ({{ c.symbol }}) — {{ c.name }}
+              </option>
+              {% endfor %}
+            </select>
           </div>
           <div>
             <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Hourly rate</label>

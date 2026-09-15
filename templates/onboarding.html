@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Welcome to InvoiceSync — Quick Setup{% endblock %}
+{% block content %}
+<div class="max-w-2xl mx-auto py-4 sm:py-8">
+  <div class="text-center mb-8">
+    <div class="inline-flex items-center gap-2 bg-brand-50 border border-brand-200 text-brand-700 shadow-soft rounded-full px-3 py-1.5 text-xs font-semibold">
+      <span class="w-2 h-2 rounded-full bg-brand-600 animate-pulse"></span> Step 1 of 1 • 60-second setup
+    </div>
+    <h1 class="mt-4 text-[30px] font-extrabold tracking-tight">Set up your workspace</h1>
+    <p class="mt-2 text-sm text-slate-600">Customize how your invoices look. You can change everything later in Settings.</p>
+  </div>
+
+  <div class="bg-white rounded-[24px] border border-slate-200 shadow-card p-6 sm:p-8">
+    <div class="flex items-center justify-between pb-6 border-b border-slate-100">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div>
+          <h2 class="font-bold tracking-tight">Workspace details</h2>
+          <p class="text-xs text-slate-500">5 simple fields • all optional & skippable</p>
+        </div>
+      </div>
+      <a href="/onboarding/skip" class="text-xs font-semibold text-slate-500 hover:text-slate-800 px-3 py-1.5 rounded-full border border-slate-200 hover:bg-slate-50 transition">
+        Skip for now →
+      </a>
+    </div>
+
+    <form method="post" action="/onboarding" class="mt-6 space-y-5">
+      <!-- 1. Business Name -->
+      <div>
+        <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">1. Business or Display Name</label>
+        <input name="business_name" value="{{ user.business_name or '' }}" placeholder="e.g. Acme Design Studio or Jane Doe Consulting" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+        <p class="mt-1 text-[11px] text-slate-500">Appears on the header of all your invoices and PDF downloads.</p>
+      </div>
+
+      <!-- 2. Country -->
+      <div>
+        <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">2. Country</label>
+        <input name="business_country" value="{{ user.business_country or 'United States' }}" placeholder="e.g. United States, Germany, Japan" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+      </div>
+
+      <!-- 3. Base Currency (default USD) -->
+      <div>
+        <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">3. Base Currency <span class="normal-case font-normal text-slate-500">(Default USD)</span></label>
+        <select name="base_currency" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+          {% for c in currencies %}
+          <option value="{{ c.code }}" {% if c.code == (user.base_currency or 'USD') %}selected{% endif %}>
+            {{ c.code }} ({{ c.symbol }}) — {{ c.name }}
+          </option>
+          {% endfor %}
+        </select>
+        <p class="mt-1 text-[11px] text-slate-500">Default currency for reporting and home-currency conversions.</p>
+      </div>
+
+      <!-- 4. Logo (optional) -->
+      <div>
+        <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">4. Logo File Path or URL <span class="normal-case font-normal text-slate-500">(Optional)</span></label>
+        <input name="logo_path" value="{{ user.logo_path or '' }}" placeholder="e.g. static/logo.png" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm font-mono focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+        <p class="mt-1 text-[11px] text-slate-500">Image file placed on your invoice PDFs.</p>
+      </div>
+
+      <!-- 5. Default Payment Terms -->
+      <div>
+        <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">5. Default Payment Terms</label>
+        <select name="default_terms" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+          <option value="Due on receipt" {% if user.default_terms == 'Due on receipt' %}selected{% endif %}>Due on receipt</option>
+          <option value="Net 15" {% if user.default_terms == 'Net 15' %}selected{% endif %}>Net 15 (15 days)</option>
+          <option value="Net 30" {% if (user.default_terms or 'Net 30') == 'Net 30' %}selected{% endif %}>Net 30 (30 days)</option>
+        </select>
+        <p class="mt-1 text-[11px] text-slate-500">Sets the default due date for new invoices.</p>
+      </div>
+
+      <div class="pt-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-slate-100">
+        <a href="/onboarding/skip" class="w-full sm:w-auto text-center px-5 py-3 text-sm font-semibold text-slate-600 hover:text-slate-900 transition">
+          Skip setup
+        </a>
+        <button type="submit" class="w-full sm:w-auto bg-slate-900 text-white px-8 py-3 rounded-xl text-sm font-semibold hover:bg-black transition flex items-center justify-center gap-2 shadow-soft">
+          Save & Go to Dashboard
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/><path d="M12 5l7 7-7 7"/></svg>
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

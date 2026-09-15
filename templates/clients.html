@@ -40,26 +40,44 @@
     <div>
       <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Currency</label>
       <div class="mt-1.5 relative">
-        <input list="currency-options" name="currency" value="INR" placeholder="INR" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold uppercase focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
-        <datalist id="currency-options">
-          <option value="INR">INR — Indian Rupee (Default)</option>
-          <option value="USD">USD — US Dollar</option>
-          <option value="EUR">EUR — Euro</option>
-          <option value="GBP">GBP — British Pound</option>
-          <option value="CAD">CAD — Canadian Dollar</option>
-          <option value="AUD">AUD — Australian Dollar</option>
-          <option value="JPY">JPY — Japanese Yen</option>
-        </datalist>
+        <select id="client-currency-select" name="currency" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+          {% for c in currencies %}
+          <option value="{{ c.code }}" {% if c.code == (default_currency or 'USD') %}selected{% endif %} data-symbol="{{ c.symbol }}" data-decimals="{{ c.decimals }}">
+            {{ c.code }} ({{ c.symbol }}) — {{ c.name }}
+          </option>
+          {% endfor %}
+        </select>
       </div>
-      <div class="mt-1 text-[11px] text-slate-500">Default INR (primary market). Or USD, EUR, GBP, or any ISO code.</div>
+      <div class="mt-1 text-[11px] text-slate-500">Default USD. Select from top 30 currencies.</div>
     </div>
     <div>
       <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Hourly rate</label>
       <div class="mt-1.5 relative">
-        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
-        <input name="rate" placeholder="95.00" type="number" step="0.01" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+        <span id="rate-symbol" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span>
+        <input id="rate-input" name="rate" placeholder="95.00" type="number" step="0.01" min="0" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-3 py-3 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
       </div>
     </div>
+    <script>
+      (function() {
+        const sel = document.getElementById('client-currency-select');
+        const sym = document.getElementById('rate-symbol');
+        const inp = document.getElementById('rate-input');
+        if (sel && sym && inp) {
+          function updateCur() {
+            const opt = sel.options[sel.selectedIndex];
+            if (opt) {
+              const s = opt.getAttribute('data-symbol') || '$';
+              const d = parseInt(opt.getAttribute('data-decimals') || '2', 10);
+              sym.textContent = s;
+              inp.step = d === 0 ? "1" : "0.01";
+              inp.placeholder = d === 0 ? "5000" : "95.00";
+            }
+          }
+          sel.addEventListener('change', updateCur);
+          updateCur();
+        }
+      })();
+    </script>
     <div>
       <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Tax % <span class="normal-case font-medium text-slate-500">— GST/VAT on every invoice</span></label>
       <div class="mt-1.5 relative">

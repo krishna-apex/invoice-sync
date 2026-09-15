@@ -4,7 +4,8 @@ import os
 import hashlib
 import secrets
 import json
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timezone, timedelta
 
 DB_PATH = os.environ.get("DB_PATH", os.path.join(os.path.dirname(os.path.abspath(__file__)), "invoicesync.db"))
 
@@ -24,6 +25,12 @@ def init_db():
             plan TEXT NOT NULL DEFAULT 'free',
             stripe_customer_id TEXT,
             api_token TEXT,
+            next_invoice_seq INTEGER DEFAULT 1,
+            invoice_prefix TEXT DEFAULT '2026-',
+            base_currency TEXT DEFAULT 'USD',
+            locale TEXT DEFAULT 'en-US',
+            onboarding_completed INTEGER DEFAULT 0,
+            default_terms TEXT DEFAULT 'Net 30',
             created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS sessions (
@@ -39,6 +46,8 @@ def init_db():
             currency TEXT NOT NULL DEFAULT 'USD',
             rate REAL NOT NULL DEFAULT 0,
             custom_fields_json TEXT,
+            tax_percent REAL DEFAULT 0,
+            locale TEXT DEFAULT 'en-US',
             created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS time_entries (
@@ -49,19 +58,30 @@ def init_db():
             seconds INTEGER NOT NULL,
             date TEXT NOT NULL,
             source TEXT NOT NULL,
+            billed INTEGER DEFAULT 0,
+            invoice_id INTEGER,
             created_at TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS invoices (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             client_id INTEGER NOT NULL,
-            number TEXT UNIQUE NOT NULL,
+            number TEXT NOT NULL,
             period_start TEXT NOT NULL,
             period_end TEXT NOT NULL,
             amount REAL NOT NULL,
+            amount_minor INTEGER,
+            currency TEXT DEFAULT 'USD',
             status TEXT NOT NULL DEFAULT 'draft',
             pdf_path TEXT,
-            created_at TEXT NOT NULL
+            terms TEXT DEFAULT 'Due on receipt',
+            notes TEXT,
+            due_date TEXT,
+            paid INTEGER DEFAULT 0,
+            chase_paused INTEGER DEFAULT 0,
+            line_items_json TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE(user_id, number)
         );
         CREATE TABLE IF NOT EXISTS subscriptions (
             user_id INTEGER PRIMARY KEY,
@@ -82,9 +102,6 @@ def init_db():
             active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL
         );
-        CREATE INDEX IF NOT EXISTS idx_time_entries_user_date ON time_entries(user_id, date);
-        CREATE INDEX IF NOT EXISTS idx_invoices_user_created ON invoices(user_id, created_at);
-        CREATE INDEX IF NOT EXISTS idx_clients_user ON clients(user_id);
         CREATE TABLE IF NOT EXISTS reminders (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
@@ -93,48 +110,81 @@ def init_db():
             sent_at TEXT NOT NULL,
             UNIQUE(invoice_id, day)
         );
+        CREATE TABLE IF NOT EXISTS password_resets (
+            token TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            expires_at TEXT NOT NULL,
+            used INTEGER DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_time_entries_user_date ON time_entries(user_id, date);
+        CREATE INDEX IF NOT EXISTS idx_invoices_user_created ON invoices(user_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_clients_user ON clients(user_id);
     """)
     conn.commit()
     conn.close()
+
+    # migrate: check if invoices table has old global unique on number (number TEXT UNIQUE)
+    try:
+        conn = get_conn()
+        inv_sql = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='invoices'").fetchone()
+        if inv_sql and ("number TEXT UNIQUE" in inv_sql["sql"]):
+            cols = [c["name"] for c in conn.execute("PRAGMA table_info(invoices)").fetchall()]
+            conn.execute("""
+                CREATE TABLE invoices_v2 (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    client_id INTEGER NOT NULL,
+                    number TEXT NOT NULL,
+                    period_start TEXT NOT NULL,
+                    period_end TEXT NOT NULL,
+                    amount REAL NOT NULL,
+                    amount_minor INTEGER,
+                    currency TEXT DEFAULT 'USD',
+                    status TEXT NOT NULL DEFAULT 'draft',
+                    pdf_path TEXT,
+                    terms TEXT DEFAULT 'Due on receipt',
+                    notes TEXT,
+                    due_date TEXT,
+                    paid INTEGER DEFAULT 0,
+                    chase_paused INTEGER DEFAULT 0,
+                    line_items_json TEXT,
+                    created_at TEXT NOT NULL,
+                    UNIQUE(user_id, number)
+                )
+            """)
+            common = [c for c in cols if c in [
+                "id", "user_id", "client_id", "number", "period_start", "period_end", "amount",
+                "status", "pdf_path", "terms", "notes", "due_date", "paid", "chase_paused",
+                "currency", "amount_minor", "line_items_json", "created_at"
+            ]]
+            cols_str = ", ".join(common)
+            conn.execute(f"INSERT INTO invoices_v2 ({cols_str}) SELECT {cols_str} FROM invoices")
+            conn.execute("DROP TABLE invoices")
+            conn.execute("ALTER TABLE invoices_v2 RENAME TO invoices")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_invoices_user_created ON invoices(user_id, created_at)")
+            conn.commit()
+            print("[DB] migrated invoices table to UNIQUE(user_id, number)")
+        conn.close()
+    except Exception as e:
+        print("[DB-MIGRATE-INV-ERR]", e)
+
     # migrate: add api_token column if missing for old dbs
-    try:
-        conn = get_conn()
-        conn.execute("SELECT api_token FROM users LIMIT 1")
-        conn.close()
-    except Exception:
-        try:
-            conn = get_conn()
-            conn.execute("ALTER TABLE users ADD COLUMN api_token TEXT")
-            conn.commit()
-            conn.close()
-        except Exception:
-            pass
-    # migrate: chase columns on invoices (due_date, paid, chase_paused)
-    for _col in ("due_date TEXT", "paid INTEGER DEFAULT 0", "chase_paused INTEGER DEFAULT 0"):
-        try:
-            conn = get_conn()
-            conn.execute(f"ALTER TABLE invoices ADD COLUMN {_col}")
-            conn.commit()
-            conn.close()
-        except Exception:
-            pass
-    # migrate: tax_percent on clients (GST/VAT per client)
-    try:
-        conn = get_conn()
-        conn.execute("ALTER TABLE clients ADD COLUMN tax_percent REAL DEFAULT 0")
-        conn.commit()
-        conn.close()
-    except Exception:
-        pass
-    # migrate: user business profile, timezone, upi, payment_link, branding prompt
     for _col in (
+        "api_token TEXT",
+        "next_invoice_seq INTEGER DEFAULT 1",
+        "invoice_prefix TEXT DEFAULT '2026-'",
+        "base_currency TEXT DEFAULT 'USD'",
+        "locale TEXT DEFAULT 'en-US'",
+        "onboarding_completed INTEGER DEFAULT 0",
+        "default_terms TEXT DEFAULT 'Net 30'",
         "business_name TEXT",
         "business_address TEXT",
         "business_city TEXT",
         "business_country TEXT",
         "business_tax_id TEXT",
         "logo_path TEXT",
-        "timezone TEXT DEFAULT 'Asia/Kolkata'",
+        "timezone TEXT DEFAULT 'America/New_York'",
         "upi_id TEXT",
         "payment_link TEXT",
         "dismissed_branding_prompt INTEGER DEFAULT 0",
@@ -146,8 +196,13 @@ def init_db():
             conn.close()
         except Exception:
             pass
-    # migrate: terms and notes on invoices
-    for _col in ("terms TEXT DEFAULT 'Due on receipt'", "notes TEXT"):
+
+    # migrate: chase columns, currency, line_items_json on invoices
+    for _col in (
+        "due_date TEXT", "paid INTEGER DEFAULT 0", "chase_paused INTEGER DEFAULT 0",
+        "terms TEXT DEFAULT 'Due on receipt'", "notes TEXT",
+        "currency TEXT DEFAULT 'USD'", "amount_minor INTEGER", "line_items_json TEXT"
+    ):
         try:
             conn = get_conn()
             conn.execute(f"ALTER TABLE invoices ADD COLUMN {_col}")
@@ -155,6 +210,27 @@ def init_db():
             conn.close()
         except Exception:
             pass
+
+    # migrate: tax_percent, locale on clients
+    for _col in ("tax_percent REAL DEFAULT 0", "locale TEXT DEFAULT 'en-US'"):
+        try:
+            conn = get_conn()
+            conn.execute(f"ALTER TABLE clients ADD COLUMN {_col}")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
+    # migrate: billed, invoice_id on time_entries
+    for _col in ("billed INTEGER DEFAULT 0", "invoice_id INTEGER"):
+        try:
+            conn = get_conn()
+            conn.execute(f"ALTER TABLE time_entries ADD COLUMN {_col}")
+            conn.commit()
+            conn.close()
+        except Exception:
+            pass
+
     print("[DB] initialized at", DB_PATH)
 
 # ---------- auth ----------
@@ -291,7 +367,7 @@ def dismiss_branding_prompt(user_id: int):
 
 
 # ---------- clients ----------
-def add_client(user_id, name, email, currency, rate, custom_fields_json, tax_percent=0):
+def add_client(user_id, name, email, currency, rate, custom_fields_json, tax_percent=0, locale="en-US"):
     now = datetime.now(timezone.utc).isoformat()
     conn = get_conn()
     cur = conn.cursor()
@@ -300,8 +376,8 @@ def add_client(user_id, name, email, currency, rate, custom_fields_json, tax_per
     except Exception:
         taxp = 0
     cur.execute(
-        "INSERT INTO clients (user_id, name, email, currency, rate, custom_fields_json, tax_percent, created_at) VALUES (?,?,?,?,?,?,?,?)",
-        (user_id, name, email, currency or "USD", float(rate or 0), custom_fields_json, taxp, now),
+        "INSERT INTO clients (user_id, name, email, currency, rate, custom_fields_json, tax_percent, locale, created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (user_id, name, email, currency or "USD", float(rate or 0), custom_fields_json, taxp, locale or "en-US", now),
     )
     cid = cur.lastrowid
     conn.commit()
@@ -324,12 +400,12 @@ def get_client(cid, user_id=None):
     conn.close()
     return row
 
-def update_client(cid, user_id, name, email, currency, rate, custom_fields_json, tax_percent=None):
+def update_client(cid, user_id, name, email, currency, rate, custom_fields_json, tax_percent=None, locale="en-US"):
     conn = get_conn()
     if tax_percent is None:
         conn.execute(
-            "UPDATE clients SET name=?, email=?, currency=?, rate=?, custom_fields_json=? WHERE id=? AND user_id=?",
-            (name, email, currency or "USD", float(rate or 0), custom_fields_json, cid, user_id),
+            "UPDATE clients SET name=?, email=?, currency=?, rate=?, custom_fields_json=?, locale=? WHERE id=? AND user_id=?",
+            (name, email, currency or "USD", float(rate or 0), custom_fields_json, locale or "en-US", cid, user_id),
         )
     else:
         try:
@@ -337,8 +413,8 @@ def update_client(cid, user_id, name, email, currency, rate, custom_fields_json,
         except Exception:
             taxp = 0
         conn.execute(
-            "UPDATE clients SET name=?, email=?, currency=?, rate=?, custom_fields_json=?, tax_percent=? WHERE id=? AND user_id=?",
-            (name, email, currency or "USD", float(rate or 0), custom_fields_json, taxp, cid, user_id),
+            "UPDATE clients SET name=?, email=?, currency=?, rate=?, custom_fields_json=?, tax_percent=?, locale=? WHERE id=? AND user_id=?",
+            (name, email, currency or "USD", float(rate or 0), custom_fields_json, taxp, locale or "en-US", cid, user_id),
         )
     conn.commit()
     conn.close()
@@ -355,7 +431,7 @@ def add_time_entry(user_id, client_id, description, seconds, date, source="manua
     conn = get_conn()
     cur = conn.cursor()
     cur.execute(
-        "INSERT INTO time_entries (user_id, client_id, description, seconds, date, source, created_at) VALUES (?,?,?,?,?,?,?)",
+        "INSERT INTO time_entries (user_id, client_id, description, seconds, date, source, billed, created_at) VALUES (?,?,?,?,?,?,0,?)",
         (user_id, client_id, description, int(seconds), date, source, now),
     )
     conn.commit()
@@ -379,6 +455,33 @@ def list_time_entries(user_id, client_id=None, start=None, end=None):
     conn.close()
     return rows
 
+def list_unbilled_time_entries(user_id, client_id=None, start=None, end=None):
+    conn = get_conn()
+    q = "SELECT * FROM time_entries WHERE user_id=? AND COALESCE(billed,0)=0"
+    params = [user_id]
+    if client_id:
+        q += " AND client_id=?"
+        params.append(client_id)
+    if start:
+        q += " AND date >= ?"
+        params.append(start)
+    if end:
+        q += " AND date <= ?"
+        params.append(end)
+    q += " ORDER BY date ASC"
+    rows = conn.execute(q, params).fetchall()
+    conn.close()
+    return rows
+
+def mark_time_entries_billed(entry_ids, invoice_id):
+    if not entry_ids:
+        return
+    conn = get_conn()
+    qmarks = ",".join("?" for _ in entry_ids)
+    conn.execute(f"UPDATE time_entries SET billed=1, invoice_id=? WHERE id IN ({qmarks})", [invoice_id] + list(entry_ids))
+    conn.commit()
+    conn.close()
+
 def count_time_entries(user_id):
     conn = get_conn()
     row = conn.execute("SELECT COUNT(*) c FROM time_entries WHERE user_id=?", (user_id,)).fetchone()
@@ -396,34 +499,111 @@ def count_invoices_this_month(user_id):
 
 def next_invoice_number(user_id):
     conn = get_conn()
-    row = conn.execute("SELECT COUNT(*) c FROM invoices WHERE user_id=?", (user_id,)).fetchone()
-    conn.close()
-    n = row["c"] + 1
-    return f"INV-{n:04d}"
+    u = conn.execute("SELECT * FROM users WHERE id=?", (user_id,)).fetchone()
+    u_dict = dict(u) if u else {}
+    current_year = datetime.now(timezone.utc).year
+    default_prefix = f"{current_year}-"
+    prefix = u_dict.get("invoice_prefix") or default_prefix
+    seq = u_dict.get("next_invoice_seq")
 
-def create_invoice(user_id, client_id, period_start, period_end, amount, status="draft", pdf_path=None, terms="Due on receipt", notes="", due_date=None):
-    number = next_invoice_number(user_id)
-    now = datetime.now(timezone.utc).isoformat()
-    conn = get_conn()
-    cur = conn.cursor()
-    # ensure uniqueness retry
-    for _ in range(3):
-        try:
-            cur.execute(
-                "INSERT INTO invoices (user_id, client_id, number, period_start, period_end, amount, status, pdf_path, terms, notes, due_date, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                (user_id, client_id, number, period_start, period_end, float(amount), status, pdf_path, terms or "Due on receipt", notes or "", due_date, now),
-            )
-            iid = cur.lastrowid
-            conn.commit()
-            conn.close()
-            print(f"[INVOICE] created {number} amount={amount} user={user_id}")
-            return iid, number
-        except sqlite3.IntegrityError:
-            # bump number
-            n = int(number.split("-")[1]) + 1
-            number = f"INV-{n:04d}"
+    if not seq or seq < 1:
+        # FreshBooks pattern: numbering from per-user MAX invoice id (never reuse deleted numbers)
+        rows = conn.execute("SELECT id, number FROM invoices WHERE user_id=? ORDER BY id ASC", (user_id,)).fetchall()
+        max_seq = 0
+        max_id = 0
+        for r in rows:
+            max_id = max(max_id, r["id"])
+            m = re.search(r"(\d+)$", r["number"])
+            if m:
+                max_seq = max(max_seq, int(m.group(1)))
+        seq = max(max_seq, max_id) + 1
+        conn.execute("UPDATE users SET next_invoice_seq=?, invoice_prefix=? WHERE id=?", (seq, prefix, user_id))
+        conn.commit()
+
     conn.close()
-    raise Exception("could not create invoice number")
+    return f"{prefix}{seq:04d}"
+
+def reseed_invoice_sequence(user_id, number):
+    m = re.search(r"^(.*?)(0*(\d+))$", str(number).strip())
+    if m:
+        prefix = m.group(1) or f"{datetime.now(timezone.utc).year}-"
+        seq = int(m.group(3))
+        next_seq = seq + 1
+        conn = get_conn()
+        conn.execute("UPDATE users SET next_invoice_seq=?, invoice_prefix=? WHERE id=?", (next_seq, prefix, user_id))
+        conn.commit()
+        conn.close()
+
+def get_invoice_by_number(user_id, number):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM invoices WHERE user_id=? AND number=?", (user_id, str(number).strip())).fetchone()
+    conn.close()
+    return row
+
+def create_invoice(user_id, client_id, period_start, period_end, amount, status="draft", pdf_path=None, terms="Due on receipt", notes="", due_date=None, number=None, currency="USD", line_items_json=None):
+    from pdf import to_minor_units
+    num = str(number).strip() if number and str(number).strip() else next_invoice_number(user_id)
+    curr = (currency or "USD").upper().strip()
+    amt = float(amount or 0)
+    amt_minor = to_minor_units(amt, curr)
+    now = datetime.now(timezone.utc).isoformat()
+
+    conn = get_conn()
+    # friendly duplicate check
+    existing = conn.execute("SELECT id FROM invoices WHERE user_id=? AND number=?", (user_id, num)).fetchone()
+    if existing:
+        conn.close()
+        raise ValueError(f"Invoice number '{num}' is already used.")
+
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO invoices (
+                user_id, client_id, number, period_start, period_end, amount, amount_minor,
+                currency, status, pdf_path, terms, notes, due_date, line_items_json, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (
+                user_id, client_id, num, period_start, period_end, amt, amt_minor,
+                curr, status, pdf_path, terms or "Due on receipt", notes or "", due_date,
+                line_items_json, now
+            ),
+        )
+        iid = cur.lastrowid
+        conn.commit()
+        conn.close()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise ValueError(f"Invoice number '{num}' is already used.")
+
+    # Re-seed sequence after manual override or auto number (Invoicely pattern)
+    reseed_invoice_sequence(user_id, num)
+
+    print(f"[INVOICE] created {num} amount={amt} {curr} user={user_id} status={status}")
+    return iid, num
+
+def approve_invoice(iid, user_id):
+    conn = get_conn()
+    inv = conn.execute("SELECT * FROM invoices WHERE id=? AND user_id=?", (iid, user_id)).fetchone()
+    if not inv:
+        conn.close()
+        return False
+    inv_dict = dict(inv)
+    if inv_dict.get("status") == "draft":
+        due_date = inv_dict.get("due_date")
+        if not due_date:
+            terms = inv_dict.get("terms") or "Due on receipt"
+            days = 0
+            if "14" in terms or "15" in terms:
+                days = 14
+            elif "30" in terms:
+                days = 30
+            elif "60" in terms:
+                days = 60
+            due_date = (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()[:10]
+        conn.execute("UPDATE invoices SET status='approved', due_date=? WHERE id=? AND user_id=?", (due_date, iid, user_id))
+        conn.commit()
+    conn.close()
+    return True
 
 def update_invoice_notes_and_terms(iid, user_id, terms=None, notes=None):
     conn = get_conn()
@@ -457,9 +637,60 @@ def set_invoice_pdf(iid, pdf_path):
     conn.commit()
     conn.close()
 
-def set_invoice_status(iid, status):
+def set_invoice_status(iid, status, user_id=None):
     conn = get_conn()
-    conn.execute("UPDATE invoices SET status=? WHERE id=?", (status, iid))
+    if user_id:
+        conn.execute("UPDATE invoices SET status=? WHERE id=? AND user_id=?", (status, iid, user_id))
+    else:
+        conn.execute("UPDATE invoices SET status=? WHERE id=?", (status, iid))
+    conn.commit()
+    conn.close()
+
+# ---------- password resets ----------
+def create_password_reset(user_id):
+    token = secrets.token_urlsafe(32)
+    now = datetime.now(timezone.utc)
+    expires_at = (now + timedelta(hours=1)).isoformat()
+    conn = get_conn()
+    conn.execute(
+        "INSERT INTO password_resets (token, user_id, expires_at, used, created_at) VALUES (?,?,?,?,?)",
+        (token, user_id, expires_at, 0, now.isoformat()),
+    )
+    conn.commit()
+    conn.close()
+    return token
+
+def get_valid_password_reset(token):
+    conn = get_conn()
+    row = conn.execute("SELECT * FROM password_resets WHERE token=? AND used=0", (token,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    r_dict = dict(row)
+    now_iso = datetime.now(timezone.utc).isoformat()
+    if now_iso > r_dict.get("expires_at", ""):
+        return None
+    return r_dict
+
+def reset_password(token, new_password):
+    rec = get_valid_password_reset(token)
+    if not rec:
+        return None
+    uid = rec["user_id"]
+    conn = get_conn()
+    conn.execute("UPDATE users SET password_hash=? WHERE id=?", (hash_password(new_password), uid))
+    conn.execute("UPDATE password_resets SET used=1 WHERE token=?", (token,))
+    conn.commit()
+    conn.close()
+    return uid
+
+# ---------- onboarding ----------
+def complete_onboarding(user_id, business_name=None, country=None, base_currency="USD", logo_path=None, terms="Net 30"):
+    conn = get_conn()
+    conn.execute(
+        "UPDATE users SET business_name=COALESCE(?, business_name), business_country=COALESCE(?, business_country), base_currency=COALESCE(?, base_currency), logo_path=COALESCE(?, logo_path), default_terms=COALESCE(?, default_terms), onboarding_completed=1 WHERE id=?",
+        (business_name or None, country or None, base_currency or "USD", logo_path or None, terms or "Net 30", user_id),
+    )
     conn.commit()
     conn.close()
 

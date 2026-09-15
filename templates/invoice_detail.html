@@ -29,25 +29,51 @@
         </div>
       </div>
 
-      <!-- Key Action: Download PDF -->
-      <div class="flex items-center gap-2">
-        <a href="/invoices/{{ invoice.id }}/pdf" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-full text-sm font-semibold shadow-card hover:bg-black hover:-translate-y-px transition">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-          Download PDF
+      <!-- Key Actions: Download PDF, Approve, Send -->
+      <div class="flex flex-wrap items-center gap-2">
+        {% if invoice.status == 'draft' %}
+        <form method="post" action="/invoices/{{ invoice.id }}/approve">
+          <button type="submit" class="inline-flex items-center justify-center gap-1.5 bg-emerald-600 text-white px-4 py-2 rounded-full text-xs font-semibold shadow-soft hover:bg-emerald-700 transition">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            Approve invoice
+          </button>
+        </form>
+        {% endif %}
+        <a href="/invoices/{{ invoice.id }}/pdf" class="w-full sm:w-auto inline-flex items-center justify-center gap-2 bg-slate-900 text-white px-4 py-2 rounded-full text-xs font-semibold shadow-card hover:bg-black hover:-translate-y-px transition">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          PDF
         </a>
       </div>
     </div>
+
+    {% if invoice.status == 'draft' %}
+    <div class="mt-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl p-3.5 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+        <span><b>Wave pattern</b>: This invoice is a <b>draft</b>. It will not appear on revenue reports or trigger chase reminders until approved.</span>
+      </div>
+      <form method="post" action="/invoices/{{ invoice.id }}/approve" class="flex-shrink-0">
+        <button type="submit" class="bg-amber-900 text-white font-semibold px-4 py-1.5 rounded-full hover:bg-black transition text-xs">
+          Approve & finalize ✓
+        </button>
+      </form>
+    </div>
+    {% endif %}
 
     <!-- Above the fold: Big Amount in Client Currency first + Home-currency approx second + Pay button -->
     <div class="mt-5 flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-50 border border-slate-200/80 rounded-2xl p-4 sm:p-5">
       <div>
         <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Invoice Amount</div>
-        <!-- Big amount in client currency first -->
+        <!-- Big amount in invoice currency -->
         <div class="mt-1 text-2xl sm:text-4xl font-extrabold text-slate-900 tracking-tight font-mono">
-          {{ fmt_money(invoice.amount, client.currency) }}
+          {{ fmt_money(invoice.amount, invoice.currency or client.currency) }}
         </div>
-        <!-- Home-currency approx second (static rate note, no fake precision) -->
-        {% if not is_inr %}
+        <!-- Home-currency approx second -->
+        {% if approx_home_str %}
+        <div class="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
+          ≈ {{ approx_home_str }}
+        </div>
+        {% elif not is_inr and approx_inr %}
         <div class="mt-1 text-xs sm:text-sm text-slate-500 font-medium">
           ≈ {{ fmt_money(approx_inr, 'INR') }} <span class="text-slate-400">({{ static_rate_note }})</span>
         </div>

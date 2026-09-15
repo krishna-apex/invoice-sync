@@ -245,7 +245,7 @@ def login(request: Request, email: str = Form(...), password: str = Form(...)):
     if not u or not db.verify_password(password, u["password_hash"]):
         return templates.TemplateResponse(request, "login.html", {"request": request, "error": "Bad email or password", "user": None})
     token = db.create_session(u["id"])
-    resp = RedirectResponse("/dashboard", status_code=303)
+    resp = RedirectResponse(_post_login_redirect(u), status_code=303)
     resp.set_cookie(COOKIE, token, httponly=True, max_age=60*60*24*30, samesite="lax")
     print(f"[AUTH] login {email}")
     return resp
@@ -263,7 +263,7 @@ def register(request: Request, email: str = Form(...), password: str = Form(...)
     db.create_user(email, password)
     u = db.get_user_by_email(email)
     token = db.create_session(u["id"])
-    resp = RedirectResponse("/dashboard", status_code=303)
+    resp = RedirectResponse(_post_login_redirect(u), status_code=303)
     resp.set_cookie(COOKIE, token, httponly=True, max_age=60*60*24*30, samesite="lax")
     return resp
 
@@ -276,6 +276,91 @@ def logout(request: Request):
     resp = RedirectResponse("/", status_code=303)
     resp.delete_cookie(COOKIE)
     return resp
+
+def _post_login_redirect(u):
+    try:
+        done = u["onboarding_completed"] if "onboarding_completed" in u.keys() else 1
+    except Exception:
+        done = 1
+    return "/dashboard" if done else "/onboarding"
+
+# ---------- forgot password (FreshBooks/Wave single-field pattern) ----------
+@app.get("/forgot-password", response_class=HTMLResponse)
+def forgot_password_page(request: Request):
+    return templates.TemplateResponse(request, "forgot_password.html", {"request": request, "error": None, "user": current_user(request)})
+
+@app.post("/forgot-password", response_class=HTMLResponse)
+def forgot_password_post(request: Request, email: str = Form("")):
+    email = (email or "").strip().lower()
+    u = db.get_user_by_email(email) if email else None
+    debug_link = None
+    if u:
+        token = db.create_password_reset(u["id"])
+        link = str(request.base_url).rstrip("/") + f"/reset-password?token={token}"
+        smtp_host = os.environ.get("SMTP_HOST")
+        if smtp_host:
+            try:
+                import smtplib
+                from email.mime.text import MIMEText
+                smtp_port = int(os.environ.get("SMTP_PORT", "587") or 587)
+                smtp_user = os.environ.get("SMTP_USER")
+                smtp_pass = os.environ.get("SMTP_PASS")
+                smtp_from = os.environ.get("SMTP_FROM") or smtp_user or "noreply@invoicesync"
+                msg = MIMEText(f"Reset your InvoiceSync password (valid 1 hour):\n\n{link}\n\nDidn't ask? Ignore this email.\nCheck spam, and note Google/Apple sign-in users reset via Google/Apple, not here.")
+                msg["Subject"] = "InvoiceSync password reset"
+                msg["From"] = smtp_from
+                msg["To"] = email
+                with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+                    s.starttls()
+                    if smtp_user:
+                        s.login(smtp_user, smtp_pass)
+                    s.send_message(msg)
+                print(f"[RESET] emailed {email}")
+            except Exception as e:
+                print("[RESET-MAIL-ERR]", e)
+                debug_link = link
+        else:
+            debug_link = link
+            print(f"[RESET] no SMTP, dev link for {email}: {link}")
+    return templates.TemplateResponse(request, "forgot_password.html", {"request": request, "error": None, "user": current_user(request), "success": True, "email": email, "debug_reset_link": debug_link})
+
+@app.get("/reset-password", response_class=HTMLResponse)
+def reset_password_page(request: Request, token: str = ""):
+    rec = db.get_valid_password_reset(token) if token else None
+    if not rec:
+        return templates.TemplateResponse(request, "reset_password.html", {"request": request, "error": "Link invalid or expired. Request a new reset link.", "token": "", "user": current_user(request)})
+    return templates.TemplateResponse(request, "reset_password.html", {"request": request, "error": None, "token": token, "user": current_user(request)})
+
+@app.post("/reset-password")
+def reset_password_post(request: Request, token: str = Form(""), password: str = Form("")):
+    if not password or len(password) < 6:
+        return templates.TemplateResponse(request, "reset_password.html", {"request": request, "error": "Password must be at least 6 characters.", "token": token, "user": current_user(request)})
+    uid = db.reset_password(token or "", password)
+    if not uid:
+        return templates.TemplateResponse(request, "reset_password.html", {"request": request, "error": "Link invalid or expired. Request a new reset link.", "token": "", "user": current_user(request)})
+    token2 = db.create_session(uid)
+    resp = RedirectResponse(_post_login_redirect(db.get_user_by_id(uid)) if hasattr(db, "get_user_by_id") else "/dashboard", status_code=303)
+    resp.set_cookie(COOKIE, token2, httponly=True, max_age=60*60*24*30, samesite="lax")
+    print(f"[RESET] password changed uid={uid}")
+    return resp
+
+# ---------- onboarding wizard (all skippable) ----------
+@app.get("/onboarding", response_class=HTMLResponse)
+def onboarding_page(request: Request):
+    u = require_user(request)
+    return templates.TemplateResponse(request, "onboarding.html", {"request": request, "user": u, "currencies": pdfgen.TOP_CURRENCIES})
+
+@app.post("/onboarding")
+def onboarding_post(request: Request, business_name: str = Form(""), business_country: str = Form(""), base_currency: str = Form("USD"), logo_path: str = Form(""), default_terms: str = Form("Net 30")):
+    u = require_user(request)
+    db.complete_onboarding(u["id"], business_name.strip() or None, business_country.strip() or None, (base_currency.strip() or "USD").upper(), logo_path.strip() or None, default_terms.strip() or None)
+    return RedirectResponse("/dashboard", status_code=303)
+
+@app.get("/onboarding/skip")
+def onboarding_skip(request: Request):
+    u = require_user(request)
+    db.complete_onboarding(u["id"])
+    return RedirectResponse("/dashboard", status_code=303)
 
 @app.get("/dashboard", response_class=HTMLResponse)
 def dashboard(request: Request):

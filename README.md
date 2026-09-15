@@ -6,7 +6,7 @@ Single process, runs locally with `python app.py`, debuggable with `print()`, se
 
 ## Stack (strict per spec)
 - **Python FastAPI** (backend) + **SQLite** (no Postgres) + **HTMX** + **Tailwind via CDN** (no React/Node build) + **Stripe** + **reportlab** (no WeasyPrint/Cairo)
-- Deps: `fastapi uvicorn[standard] jinja2 python-multipart reportlab stripe requests` only
+- Deps: `fastapi uvicorn[standard] jinja2 python-multipart reportlab stripe razorpay requests` only
 
 ## Features (MVP only)
 1. **Auth**: register/login/logout, PBKDF2 hash, httpOnly cookie sessions
@@ -34,13 +34,18 @@ python app.py
 
 ## Routes
 ```
-GET  /, /login, /register, /dashboard
+GET  /, /login, /register, /dashboard, /settings, /billing
 POST /register, /login, /logout
-GET/POST /clients, /clients/{id}
+GET/POST /clients, GET/POST /clients/{id}, POST /clients/{id}/delete
 POST /import-time
-GET/POST /invoices/new, POST /invoices/{id}/send, GET /invoices/{id}/pdf, GET /invoices/{id}
+GET/POST /invoices/new, GET /invoices/{id}, GET /invoices/{id}/pdf
+POST /invoices/{id}/pay, POST /invoices/{id}/send, POST /invoices/{id}/paid, POST /invoices/{id}/chase-pause
 POST /invoices/recurring/run
+POST /business-profile, POST /settings, POST /settings/dismiss-branding
+GET  /sample-invoice/pdf
+GET  /api/chase-due, GET /api/chase-due?send=1
 GET  /billing, POST /billing/checkout, POST /stripe/webhook
+POST /billing/razorpay/order, POST /billing/razorpay/verify
 ```
 
 ## CSV fallback format

@@ -72,15 +72,40 @@
         </div>
       </div>
 
-      <div class="mt-5">
-        <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Application Timezone</label>
-        <select name="timezone_val" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
-          {% set cur_tz = user.timezone or 'Asia/Kolkata' %}
-          {% for tz in timezones %}
-          <option value="{{ tz }}" {% if cur_tz == tz %}selected{% endif %}>{{ tz }}</option>
-          {% endfor %}
-        </select>
-        <p class="mt-1.5 text-xs text-slate-500">Default is Asia/Kolkata (primary market). Chase nudges and due dates are computed according to this clock.</p>
+      <div class="mt-5 space-y-4">
+        <div>
+          <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Base Currency (Accounting / Default)</label>
+          <select name="base_currency" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+            {% set cur_base = user.base_currency or 'USD' %}
+            {% for c in currencies %}
+            <option value="{{ c.code }}" {% if cur_base == c.code %}selected{% endif %}>
+              {{ c.code }} ({{ c.symbol }}) — {{ c.name }}
+            </option>
+            {% endfor %}
+          </select>
+          <p class="mt-1.5 text-xs text-slate-500">Default currency for new clients and foreign currency approximation.</p>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Default Payment Terms</label>
+          <select name="default_terms" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+            {% set cur_terms = user.default_terms or 'Net 30' %}
+            <option value="Due on receipt" {% if cur_terms == 'Due on receipt' %}selected{% endif %}>Due on receipt</option>
+            <option value="Net 15" {% if cur_terms == 'Net 15' %}selected{% endif %}>Net 15 (15 days)</option>
+            <option value="Net 30" {% if cur_terms == 'Net 30' %}selected{% endif %}>Net 30 (30 days)</option>
+          </select>
+        </div>
+
+        <div>
+          <label class="text-xs font-semibold tracking-wide uppercase text-slate-600">Application Timezone</label>
+          <select name="timezone_val" class="mt-1.5 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:bg-white focus:border-brand-300 focus:ring-4 focus:ring-brand-100 outline-none transition">
+            {% set cur_tz = user.timezone or 'America/New_York' %}
+            {% for tz in timezones %}
+            <option value="{{ tz }}" {% if cur_tz == tz %}selected{% endif %}>{{ tz }}</option>
+            {% endfor %}
+          </select>
+          <p class="mt-1.5 text-xs text-slate-500">Default is America/New_York. Chase nudges and due dates are computed according to this clock.</p>
+        </div>
       </div>
     </div>
 

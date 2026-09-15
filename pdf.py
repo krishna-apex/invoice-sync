@@ -14,67 +14,133 @@ DARK = HexColor("#0F172A")
 MUTED = HexColor("#64748B")
 BG_LIGHT = HexColor("#F1F5F9")
 
-ZERO_DECIMAL_CURRENCIES = {
-    "bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga",
-    "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"
+ZERO_DECIMAL_SET = {
+    "JPY", "KRW", "VND", "CLP", "BIF", "DJF", "GNF", "KMF", "MGA", "PYG", "RWF", "UGX", "VUV", "XAF", "XOF", "XPF"
+}
+ZERO_DECIMAL_CURRENCIES = {c.lower() for c in ZERO_DECIMAL_SET}
+
+TOP_CURRENCIES = [
+    {"code": "USD", "symbol": "$", "name": "US Dollar", "decimals": 2},
+    {"code": "EUR", "symbol": "€", "name": "Euro", "decimals": 2},
+    {"code": "GBP", "symbol": "£", "name": "British Pound", "decimals": 2},
+    {"code": "JPY", "symbol": "¥", "name": "Japanese Yen", "decimals": 0},
+    {"code": "CAD", "symbol": "CA$", "name": "Canadian Dollar", "decimals": 2},
+    {"code": "AUD", "symbol": "A$", "name": "Australian Dollar", "decimals": 2},
+    {"code": "CHF", "symbol": "CHF", "name": "Swiss Franc", "decimals": 2},
+    {"code": "SGD", "symbol": "S$", "name": "Singapore Dollar", "decimals": 2},
+    {"code": "INR", "symbol": "₹", "name": "Indian Rupee", "decimals": 2},
+    {"code": "NZD", "symbol": "NZ$", "name": "New Zealand Dollar", "decimals": 2},
+    {"code": "CNY", "symbol": "¥", "name": "Chinese Yuan", "decimals": 2},
+    {"code": "HKD", "symbol": "HK$", "name": "Hong Kong Dollar", "decimals": 2},
+    {"code": "BRL", "symbol": "R$", "name": "Brazilian Real", "decimals": 2},
+    {"code": "MXN", "symbol": "MX$", "name": "Mexican Peso", "decimals": 2},
+    {"code": "SEK", "symbol": "kr", "name": "Swedish Krona", "decimals": 2},
+    {"code": "NOK", "symbol": "kr", "name": "Norwegian Krone", "decimals": 2},
+    {"code": "DKK", "symbol": "kr", "name": "Danish Krone", "decimals": 2},
+    {"code": "PLN", "symbol": "zł", "name": "Polish Zloty", "decimals": 2},
+    {"code": "ZAR", "symbol": "R", "name": "South African Rand", "decimals": 2},
+    {"code": "AED", "symbol": "AED", "name": "UAE Dirham", "decimals": 2},
+    {"code": "SAR", "symbol": "SAR", "name": "Saudi Riyal", "decimals": 2},
+    {"code": "KRW", "symbol": "₩", "name": "South Korean Won", "decimals": 0},
+    {"code": "THB", "symbol": "฿", "name": "Thai Baht", "decimals": 2},
+    {"code": "IDR", "symbol": "Rp", "name": "Indonesian Rupiah", "decimals": 2},
+    {"code": "MYR", "symbol": "RM", "name": "Malaysian Ringgit", "decimals": 2},
+    {"code": "PHP", "symbol": "₱", "name": "Philippine Peso", "decimals": 2},
+    {"code": "VND", "symbol": "₫", "name": "Vietnamese Dong", "decimals": 0},
+    {"code": "TRY", "symbol": "₺", "name": "Turkish Lira", "decimals": 2},
+    {"code": "ILS", "symbol": "₪", "name": "Israeli Shekel", "decimals": 2},
+    {"code": "CZK", "symbol": "Kč", "name": "Czech Koruna", "decimals": 2},
+    {"code": "CLP", "symbol": "CLP$", "name": "Chilean Peso", "decimals": 0},
+]
+
+CURRENCY_SYMBOLS = {c["code"]: c["symbol"] for c in TOP_CURRENCIES}
+CURRENCY_MAP = {c["code"]: c for c in TOP_CURRENCIES}
+
+RATES_TO_USD = {
+    "USD": 1.0, "EUR": 1.08, "GBP": 1.27, "JPY": 0.0067, "CAD": 0.74,
+    "AUD": 0.65, "CHF": 1.12, "SGD": 0.75, "INR": 0.012, "NZD": 0.60,
+    "CNY": 0.14, "HKD": 0.13, "BRL": 0.18, "MXN": 0.052, "SEK": 0.095,
+    "NOK": 0.093, "DKK": 0.145, "PLN": 0.25, "ZAR": 0.055, "AED": 0.27,
+    "SAR": 0.27, "KRW": 0.00073, "THB": 0.028, "IDR": 0.000062,
+    "MYR": 0.22, "PHP": 0.017, "VND": 0.000039, "TRY": 0.029,
+    "ILS": 0.27, "CZK": 0.043, "CLP": 0.0011,
 }
 
-CURRENCY_SYMBOLS = {
-    "INR": "₹",
-    "USD": "$",
-    "EUR": "€",
-    "GBP": "£",
-    "CAD": "CA$",
-    "AUD": "A$",
-    "JPY": "¥",
-    "CHF": "CHF",
-    "SGD": "S$",
-    "NZD": "NZ$",
-    "AED": "AED",
+def to_minor_units(amount: float, currency: str = "USD") -> int:
+    curr = (currency or "USD").upper().strip()
+    if curr in ZERO_DECIMAL_SET:
+        return int(round(float(amount or 0)))
+    return int(round(float(amount or 0) * 100))
+
+def from_minor_units(minor: int, currency: str = "USD") -> float:
+    curr = (currency or "USD").upper().strip()
+    if curr in ZERO_DECIMAL_SET:
+        return float(minor or 0)
+    return round(float(minor or 0) / 100.0, 2)
+
+# 5-locale formatter dict (stdlib only, ~40 LOC)
+LOCALES_FORMAT = {
+    "en-US": {"t": ",", "d": ".", "group": "std"},
+    "en-IN": {"t": ",", "d": ".", "group": "in"},
+    "de-DE": {"t": ".", "d": ",", "group": "std"},
+    "fr-FR": {"t": "\u202f", "d": ",", "group": "std"},
+    "ja-JP": {"t": ",", "d": ".", "group": "std"},
 }
 
-def format_indian_grouping(num_str: str) -> str:
-    """Format integer string using Indian numbering: 1,00,000"""
-    if len(num_str) <= 3:
-        return num_str
-    last3 = num_str[-3:]
-    remaining = num_str[:-3]
-    parts = []
-    while len(remaining) > 2:
-        parts.append(remaining[-2:])
-        remaining = remaining[:-2]
-    if remaining:
-        parts.append(remaining)
-    parts.reverse()
-    return ",".join(parts) + "," + last3
+def format_locale_number(val: float, loc: str = "en-US", is_zero_dec: bool = False) -> str:
+    cfg = LOCALES_FORMAT.get(loc, LOCALES_FORMAT["en-US"])
+    t_sep, d_sep, grp = cfg["t"], cfg["d"], cfg["group"]
+    abs_v = abs(val)
+    if is_zero_dec:
+        int_part = str(int(round(abs_v)))
+        dec_part = ""
+    else:
+        rounded = round(abs_v, 2)
+        int_part = str(int(rounded))
+        dec_part = f"{rounded:.2f}".split(".")[1]
 
-def fmt_money(amount, currency: str = "USD") -> str:
-    """One helper fmt_money(amount, currency): symbol + code + locale grouping."""
+    if grp == "in" and len(int_part) > 3:
+        last3 = int_part[-3:]
+        rem = int_part[:-3]
+        parts = []
+        while len(rem) > 2:
+            parts.append(rem[-2:])
+            rem = rem[:-2]
+        if rem:
+            parts.append(rem)
+        parts.reverse()
+        grouped = t_sep.join(parts) + t_sep + last3
+    else:
+        parts = []
+        rem = int_part
+        while len(rem) > 3:
+            parts.append(rem[-3:])
+            rem = rem[:-3]
+        if rem:
+            parts.append(rem)
+        parts.reverse()
+        grouped = t_sep.join(parts)
+
+    return grouped if is_zero_dec else f"{grouped}{d_sep}{dec_part}"
+
+def fmt_money(amount, currency: str = "USD", locale: str = None) -> str:
     try:
         amt = float(amount or 0)
     except Exception:
         amt = 0.0
     curr = (currency or "USD").upper().strip()
-    is_zero = curr.lower() in ZERO_DECIMAL_CURRENCIES
+    is_zero = curr in ZERO_DECIMAL_SET or curr.lower() in ZERO_DECIMAL_CURRENCIES
     symbol = CURRENCY_SYMBOLS.get(curr, curr + " ")
     sign = "-" if amt < 0 else ""
-    abs_amt = abs(amt)
-
-    if curr == "INR":
-        if is_zero:
-            int_part = str(int(round(abs_amt)))
-            formatted = format_indian_grouping(int_part)
+    if not locale:
+        if curr == "INR":
+            locale = "en-IN"
+        elif curr == "JPY":
+            locale = "ja-JP"
         else:
-            cents = f"{abs_amt:.2f}".split(".")[1]
-            int_part = str(int(abs_amt))
-            formatted = f"{format_indian_grouping(int_part)}.{cents}"
-        return f"{sign}{symbol}{formatted} {curr}"
-    else:
-        if is_zero:
-            formatted = f"{abs_amt:,.0f}"
-        else:
-            formatted = f"{abs_amt:,.2f}"
-        return f"{sign}{symbol}{formatted} {curr}"
+            locale = "en-US"
+    num_str = format_locale_number(amt, locale, is_zero_dec=is_zero)
+    return f"{sign}{symbol}{num_str} {curr}"
 
 def generate_invoice_pdf(invoice, client, time_entries, user_email, user=None, out_dir="pdfs"):
     os.makedirs(out_dir, exist_ok=True)
@@ -176,7 +242,18 @@ def generate_invoice_pdf(invoice, client, time_entries, user_email, user=None, o
         print("[PDF-CF-ERR]", e)
         custom = ""
 
-    curr = client["currency"] or "USD"
+    curr = ((invoice["currency"] if "currency" in invoice.keys() and invoice["currency"] else client["currency"]) or "USD").strip().upper()
+    client_locale = (client["locale"] if "locale" in client.keys() and client["locale"] else None) or ("ja-JP" if curr == "JPY" else ("en-IN" if curr == "INR" else "en-US"))
+    
+    home_curr = (u_dict.get("base_currency") or "USD").strip().upper()
+    user_locale = u_dict.get("locale") or "en-US"
+    approx_line = ""
+    if curr != home_curr:
+        rate_val = RATES_TO_USD.get(curr, 1.0) / RATES_TO_USD.get(home_curr, 1.0)
+        approx_amt = float(invoice["amount"] or 0) * rate_val
+        today_s = datetime.now().strftime("%Y-%m-%d")
+        approx_line = f"<br/><font size=7 color=\"#64748B\">≈ {fmt_money(approx_amt, home_curr, user_locale)} (1 {curr} ≈ {rate_val:g} {home_curr} as of {today_s})</font>"
+
     to_block = f'<b>Bill to</b><br/><b>{client["name"]}</b><br/>{client["email"] or ""}<br/>Currency: {curr}{custom}'
     due_str = ""
     try:
@@ -199,7 +276,7 @@ def generate_invoice_pdf(invoice, client, time_entries, user_email, user=None, o
         f'{terms_str}'
         f'<b>Issued</b><br/>{invoice["created_at"][:10]}<br/><br/>'
         f'<b>Due</b><br/>{due_str or "on receipt"}<br/><br/>'
-        f'<b>Amount</b><br/><font size=13 color="#2563EB"><b>{fmt_money(invoice["amount"], curr)}</b></font>'
+        f'<b>Amount</b><br/><font size=13 color="#2563EB"><b>{fmt_money(invoice["amount"], curr, client_locale)}</b></font>{approx_line}'
     )
 
     t2 = Table([[Paragraph(from_block, s_norm), Paragraph(to_block, s_norm), Paragraph(info_block, s_small)]], colWidths=[55*mm, 60*mm, 55*mm])
@@ -207,15 +284,80 @@ def generate_invoice_pdf(invoice, client, time_entries, user_email, user=None, o
     story.append(t2)
     story.append(Spacer(1, 6*mm))
 
-    # Line items
-    story.append(Paragraph("Time entries", s_h))
+    # Line items or time entries
     notes_val = ""
     try:
         notes_val = (invoice["notes"] if "notes" in invoice.keys() else "") or ""
     except Exception:
         notes_val = ""
 
-    if time_entries:
+    line_items_data = None
+    try:
+        if "line_items_json" in invoice.keys() and invoice["line_items_json"]:
+            line_items_data = json.loads(invoice["line_items_json"])
+    except Exception as e:
+        print("[PDF-LINEITEMS-ERR]", e)
+        line_items_data = None
+
+    if line_items_data:
+        story.append(Paragraph("Invoice items", s_h))
+        data = [[Paragraph("<b>Description</b>", s_small), Paragraph("<b>Qty / Hrs</b>", s_small), Paragraph("<b>Rate</b>", s_small), Paragraph("<b>Tax</b>", s_small), Paragraph("<b>Line total</b>", s_small)]]
+        subtotal = 0.0
+        total_tax = 0.0
+        for itm in line_items_data:
+            d_desc = str(itm.get("desc") or "-")
+            d_qty = float(itm.get("qty") or 1.0)
+            d_rate = float(itm.get("rate") or 0.0)
+            d_tax_pct = float(itm.get("tax") or 0.0)
+            item_line_total = d_qty * d_rate
+            item_tax_amt = item_line_total * d_tax_pct / 100.0
+            subtotal += item_line_total
+            total_tax += item_tax_amt
+            data.append([
+                Paragraph(d_desc, s_small),
+                Paragraph(f"{d_qty:g}", s_small),
+                Paragraph(fmt_money(d_rate, curr, client_locale), s_small),
+                Paragraph(f"{d_tax_pct:g}%" if d_tax_pct else "-", s_small),
+                Paragraph(fmt_money(item_line_total + item_tax_amt, curr, client_locale), s_small),
+            ])
+
+        if notes_val.strip():
+            data.append([
+                Paragraph(f"<b>Customer Notes:</b> {notes_val.strip()}", s_small), "", "", "", ""
+            ])
+
+        data.append([
+            Paragraph("", s_small), Paragraph("Subtotal", s_small), Paragraph("", s_small), Paragraph("", s_small), Paragraph(fmt_money(subtotal, curr, client_locale), s_small),
+        ])
+        if total_tax > 0:
+            data.append([
+                Paragraph("", s_small), Paragraph("Tax", s_small), Paragraph("", s_small), Paragraph("", s_small), Paragraph(fmt_money(total_tax, curr, client_locale), s_small),
+            ])
+        data.append([
+            Paragraph("", s_small), Paragraph("<b>Total</b>", s_small), Paragraph("", s_small), Paragraph("", s_small), Paragraph(f"<b>{fmt_money(invoice['amount'], curr, client_locale)}</b>{approx_line}", s_small)
+        ])
+        tbl = Table(data, colWidths=[70*mm, 24*mm, 28*mm, 20*mm, 28*mm], repeatRows=1)
+        t_styles = [
+            ("BACKGROUND", (0,0), (-1,0), BRAND),
+            ("TEXTCOLOR", (0,0), (-1,0), white),
+            ("FONTSIZE", (0,0), (-1,-1), 9),
+            ("BOTTOMPADDING", (0,0), (-1,0), 8),
+            ("TOPPADDING", (0,0), (-1,0), 8),
+            ("BACKGROUND", (0,1), (-1,-2), white),
+            ("BACKGROUND", (0,-1), (-1,-1), BG_LIGHT),
+            ("GRID", (0,0), (-1,-1), 0.4, colors.HexColor("#E2E8F0")),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+            ("LEFTPADDING", (0,0), (-1,-1), 6),
+            ("RIGHTPADDING", (0,0), (-1,-1), 6),
+        ]
+        if notes_val.strip():
+            notes_row_idx = len(data) - (3 if total_tax > 0 else 2)
+            t_styles.append(("SPAN", (0, notes_row_idx), (-1, notes_row_idx)))
+            t_styles.append(("BACKGROUND", (0, notes_row_idx), (-1, notes_row_idx), HexColor("#F8FAFC")))
+        tbl.setStyle(TableStyle(t_styles))
+        story.append(tbl)
+    elif time_entries:
+        story.append(Paragraph("Time entries", s_h))
         data = [[Paragraph("<b>Date</b>", s_small), Paragraph("<b>Description</b>", s_small), Paragraph("<b>Hours</b>", s_small), Paragraph("<b>Rate</b>", s_small), Paragraph("<b>Line total</b>", s_small)]]
         rate = float(client["rate"] or 0)
         for te in time_entries:
@@ -226,10 +368,9 @@ def generate_invoice_pdf(invoice, client, time_entries, user_email, user=None, o
                 Paragraph(te["date"], s_small),
                 Paragraph(te["description"] or "-", s_small),
                 Paragraph(f"{hrs:.2f}", s_small),
-                Paragraph(f"{fmt_money(rate, curr)}/h" if rate else "-", s_small),
-                Paragraph(fmt_money(line_total, curr), s_small),
+                Paragraph(f"{fmt_money(rate, curr, client_locale)}/h" if rate else "-", s_small),
+                Paragraph(fmt_money(line_total, curr, client_locale), s_small),
             ])
-        # totals rows: subtotal / tax / total (single money-math with app)
         taxp = 0
         try:
             taxp = float((client["tax_percent"] if "tax_percent" in client.keys() else 0) or 0)
@@ -239,21 +380,20 @@ def generate_invoice_pdf(invoice, client, time_entries, user_email, user=None, o
         subtotal = sum(int(te["seconds"]) / 3600 * rate for te in time_entries)
         taxamt = subtotal * taxp / 100
 
-        # Customer notes above totals if present
         if notes_val.strip():
             data.append([
-                Paragraph(f"<b>Notes:</b> {notes_val.strip()}", s_small), "", "", "", ""
+                Paragraph(f"<b>Customer Notes:</b> {notes_val.strip()}", s_small), "", "", "", ""
             ])
 
         data.append([
-            Paragraph("", s_small), Paragraph("Subtotal", s_small), Paragraph(f"{total_hrs:.2f}h", s_small), Paragraph("", s_small), Paragraph(fmt_money(subtotal, curr), s_small),
+            Paragraph("", s_small), Paragraph("Subtotal", s_small), Paragraph(f"{total_hrs:.2f}h", s_small), Paragraph("", s_small), Paragraph(fmt_money(subtotal, curr, client_locale), s_small),
         ])
         if taxp:
             data.append([
-                Paragraph("", s_small), Paragraph(f"Tax ({taxp:g}%)", s_small), Paragraph("", s_small), Paragraph("", s_small), Paragraph(fmt_money(taxamt, curr), s_small),
+                Paragraph("", s_small), Paragraph(f"Tax ({taxp:g}%)", s_small), Paragraph("", s_small), Paragraph("", s_small), Paragraph(fmt_money(taxamt, curr, client_locale), s_small),
             ])
         data.append([
-            Paragraph("", s_small), Paragraph("<b>Total</b>", s_small), Paragraph(f"<b>{total_hrs:.2f}h</b>", s_small), Paragraph("", s_small), Paragraph(f"<b>{fmt_money(invoice['amount'], curr)}</b>", s_small)
+            Paragraph("", s_small), Paragraph("<b>Total</b>", s_small), Paragraph(f"<b>{total_hrs:.2f}h</b>", s_small), Paragraph("", s_small), Paragraph(f"<b>{fmt_money(invoice['amount'], curr, client_locale)}</b>{approx_line}", s_small)
         ])
         tbl = Table(data, colWidths=[28*mm, 72*mm, 20*mm, 28*mm, 22*mm], repeatRows=1)
         t_styles = [
@@ -270,7 +410,6 @@ def generate_invoice_pdf(invoice, client, time_entries, user_email, user=None, o
             ("RIGHTPADDING", (0,0), (-1,-1), 6),
         ]
         if notes_val.strip():
-            # span the notes row across columns
             notes_row_idx = len(data) - (3 if not taxp else 4)
             t_styles.append(("SPAN", (0, notes_row_idx), (-1, notes_row_idx)))
             t_styles.append(("BACKGROUND", (0, notes_row_idx), (-1, notes_row_idx), HexColor("#F8FAFC")))
@@ -278,8 +417,8 @@ def generate_invoice_pdf(invoice, client, time_entries, user_email, user=None, o
         tbl.setStyle(TableStyle(t_styles))
         story.append(tbl)
     else:
-        # Fixed amount case (no time entries, but invoice amount set)
-        story.append(Paragraph(f"No time entries for period. Fixed total: <b>{fmt_money(invoice['amount'], client['currency'])}</b>", s_small))
+        # Fixed amount case
+        story.append(Paragraph(f"Fixed total: <b>{fmt_money(invoice['amount'], curr, client_locale)}</b>{approx_line}", s_small))
         if notes_val.strip():
             story.append(Spacer(1, 4*mm))
             story.append(Paragraph(f"<b>Customer Notes / Terms:</b><br/>{notes_val.strip().replace(chr(10), '<br/>')}", s_small))
